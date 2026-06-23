@@ -50,6 +50,7 @@ def home():
 @app.post("/tenders/analyze")
 async def analyze_tender(
     title: str = Form(...),
+    language: str = Form("english"),
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
@@ -59,10 +60,11 @@ async def analyze_tender(
     if len(tender_text.strip()) < 20:
         tender_text = "Unable to extract readable text from this file."
 
-    result = analyze_with_gemini(tender_text)
+    result = analyze_with_gemini(tender_text, language)
 
     tender = Tender(
         title=title,
+        language=language,
         original_text=tender_text,
         summary=result["summary"],
         eligibility=result["eligibility"],
@@ -84,6 +86,7 @@ def get_tender_response(tender):
     return {
         "id": tender.id,
         "title": tender.title,
+        "language": tender.language,
         "summary": tender.summary,
         "eligibility": tender.eligibility,
         "required_documents": tender.required_documents,
@@ -102,6 +105,7 @@ def list_tenders(db: Session = Depends(get_db)):
         {
             "id": t.id,
             "title": t.title,
+            "language": t.language,
             "created_at": t.created_at,
             "summary": t.summary[:180] if t.summary else ""
         }
@@ -129,6 +133,7 @@ def export_docx(tender_id: int, db: Session = Depends(get_db)):
     doc = Document()
     doc.add_heading("TenderOS AI - Tender Analysis Report", 0)
     doc.add_heading(tender.title, level=1)
+    doc.add_paragraph(f"Output Language: {tender.language}")
 
     sections = [
         ("Executive Summary", tender.summary),
@@ -136,7 +141,7 @@ def export_docx(tender_id: int, db: Session = Depends(get_db)):
         ("Required Documents", tender.required_documents),
         ("Compliance Matrix", tender.compliance_matrix),
         ("Risk Analysis", tender.risk_analysis),
-        ("Technical Proposal Draft", tender.proposal_draft),
+        ("Tender Submission Draft", tender.proposal_draft),
         ("Final Submission Checklist", tender.final_checklist),
     ]
 

@@ -7,6 +7,7 @@ class Tender(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String(255), nullable=False)
+    language = Column(String(50), default="english")
 
     original_text = Column(Text)
     summary = Column(Text)

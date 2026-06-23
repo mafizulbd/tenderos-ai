@@ -18,11 +18,15 @@ def extract_section(text: str, start: str, end: str | None = None) -> str:
     return match.group(1).strip() if match else "Not found in the document."
 
 
-def analyze_with_gemini(tender_text: str) -> dict:
+def analyze_with_gemini(tender_text: str, language: str = "english") -> dict:
+    output_language = "Bangla" if language == "bangla" else "English"
+
     prompt = f"""
 You are TenderOS AI, an expert tender preparation and proposal drafting assistant.
 
 Rules:
+- Write all section content in {output_language}.
+- Keep section headings exactly in English for parser stability.
 - Use only information found in the tender document.
 - Do not invent company history, certifications, project experience, team members, or pricing.
 - If information is missing, write: Not found in the document.

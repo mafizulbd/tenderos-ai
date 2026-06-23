@@ -7,6 +7,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8008";
 
 export default function Home() {
   const [title, setTitle] = useState("");
+  const [language, setLanguage] = useState("english");
   const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
@@ -22,6 +23,7 @@ export default function Home() {
 
     const formData = new FormData();
     formData.append("title", title);
+    formData.append("language", language);
     formData.append("file", file);
 
     try {
@@ -30,18 +32,17 @@ export default function Home() {
         body: formData,
       });
 
-     const text = await response.text();
+      const text = await response.text();
 
-    if (!response.ok) {
-     throw new Error(`Backend error ${response.status}: ${text}`);
-    }
-  
-   const data = JSON.parse(text);
-   setResult(data);
+      if (!response.ok) {
+        throw new Error(`Backend error ${response.status}: ${text}`);
+      }
 
-    } catch (error) {
+      const data = JSON.parse(text);
+      setResult(data);
+    } catch (error: any) {
       setResult({
-        error: "Failed to connect backend."
+        error: `Failed to connect backend: ${error?.message || String(error)}`
       });
     } finally {
       setLoading(false);
@@ -61,7 +62,7 @@ export default function Home() {
     <main className="container">
       <section className="hero">
         <h1>TenderOS AI</h1>
-        <p>AI-powered Tender Analysis and Draft Submission Platform</p>
+        <p>AI-powered Tender Analysis and Submission Drafting Platform</p>
       </section>
 
       <section className="card">
@@ -73,6 +74,14 @@ export default function Home() {
           value={title}
           onChange={(e) => setTitle(e.target.value)}
         />
+
+        <select
+          value={language}
+          onChange={(e) => setLanguage(e.target.value)}
+        >
+          <option value="english">English</option>
+          <option value="bangla">বাংলা</option>
+        </select>
 
         <input
           type="file"
@@ -99,7 +108,7 @@ export default function Home() {
           <Section title="Required Documents" content={result.required_documents} />
           <Section title="Compliance Matrix" content={result.compliance_matrix} />
           <Section title="Risk Analysis" content={result.risk_analysis} />
-          <Section title="Technical Proposal Draft" content={result.proposal_draft} />
+          <Section title="Tender Submission Draft" content={result.proposal_draft} />
           <Section title="Final Submission Checklist" content={result.final_checklist} />
 
           <a
