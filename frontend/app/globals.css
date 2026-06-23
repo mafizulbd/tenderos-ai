@@ -1,0 +1,60 @@
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #0f172a;
+  color: #e5e7eb;
+}
+
+.container {
+  max-width: 1100px;
+  margin: auto;
+  padding: 40px;
+}
+
+.hero {
+  padding: 32px;
+  background: linear-gradient(135deg, #1e293b, #111827);
+  border-radius: 24px;
+  margin-bottom: 24px;
+}
+
+.card {
+  background: #111827;
+  border: 1px solid #374151;
+  border-radius: 20px;
+  padding: 24px;
+  margin-bottom: 24px;
+}
+
+input {
+  width: 100%;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid #374151;
+  margin: 10px 0;
+  background: #020617;
+  color: white;
+}
+
+button {
+  padding: 14px 22px;
+  border-radius: 12px;
+  border: none;
+  background: #2563eb;
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #1d4ed8;
+}
+
+pre {
+  white-space: pre-wrap;
+  background: #020617;
+  border: 1px solid #334155;
+  padding: 20px;
+  border-radius: 14px;
+  line-height: 1.6;
+}

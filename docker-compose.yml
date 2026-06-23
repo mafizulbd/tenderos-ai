@@ -1,0 +1,42 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: tenderos_postgres
+    environment:
+      POSTGRES_USER: tenderos
+      POSTGRES_PASSWORD: tenderos123
+      POSTGRES_DB: tenderos_db
+    ports:
+      - "5435:5432"
+    volumes:
+      - tenderos_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tenderos -d tenderos_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    container_name: tenderos_backend
+    environment:
+      DATABASE_URL: postgresql://tenderos:tenderos123@postgres:5432/tenderos_db
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+    ports:
+      - "8008:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    container_name: tenderos_frontend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8008
+    ports:
+      - "3008:3000"
+    depends_on:
+      - backend
+
+volumes:
+  tenderos_postgres_data:
