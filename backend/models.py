@@ -197,6 +197,22 @@ class Contract(Base):
     updated_at = Column(DateTime, nullable=True)
 
 
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)   # recipient
+    type = Column(String(50), nullable=False)
+    entity_type = Column(String(20), nullable=True)
+    entity_id = Column(Integer, nullable=True)
+    title = Column(String(255), nullable=False)
+    message = Column(Text, default="")
+    urgency = Column(String(20), default="info")   # critical / warning / info
+    read_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class DiscoveredTender(Base):
     """Global pool of tenders discovered from external sources."""
     __tablename__ = "discovered_tenders"

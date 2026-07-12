@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { FileText, FolderKanban, Search, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { FileText, FolderKanban, Search, Trash2, UploadCloud } from "lucide-react";
 import { apiRequest } from "../api";
 import { formatDate } from "../utils";
 import type { TenderSummary } from "../types";
@@ -102,6 +103,12 @@ export function TenderLibrary({ tenders, selectedId, token, onSelect, onDeleted 
               ? "Try a different search term."
               : "Upload your first tender to populate this library."}
           </span>
+          {!search && (
+            <Link href="/dashboard#analyze" className="btn-link primary" style={{ marginTop: 12 }}>
+              <UploadCloud size={16} />
+              Upload a tender
+            </Link>
+          )}
         </div>
       ) : (
         <div className="tender-list">

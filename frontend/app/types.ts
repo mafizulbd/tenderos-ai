@@ -221,3 +221,29 @@ export type TenderDetail = TenderSummary & {
   personalized_proposal: string | null;
   bid_strategy: string | null;
 };
+
+export type Urgency = "critical" | "warning" | "info";
+
+export type CalendarEvent = {
+  date: string;
+  type: "tender_deadline" | "contract_end" | "task_due";
+  entity_type: string | null;
+  entity_id: number | null;
+  title: string;
+  urgency: Urgency;
+};
+
+export type AppNotification = {
+  id: number | null;
+  persisted: boolean;
+  type: string;
+  entity_type: string | null;
+  entity_id: number | null;
+  title: string;
+  message: string;
+  urgency: Urgency;
+  read_at: string | null;
+  created_at?: string;
+  deadline?: string | null;
+  days_left?: number | null;
+};

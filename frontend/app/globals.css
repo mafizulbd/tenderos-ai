@@ -894,6 +894,24 @@ a:hover {
   width: 100%;
 }
 
+.btn-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 9px 14px;
+  font-weight: 500;
+  text-decoration: none !important;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.btn-link:hover {
+  text-decoration: none !important;
+}
+
 .icon-btn {
   min-height: 32px;
   min-width: 32px;
@@ -2243,13 +2261,14 @@ a:hover {
 .text-warning { color: #f59e0b; }
 
 /* ============================================================
-   AI Auto Reminders
+   Notifications
    ============================================================ */
 .reminder-panel {
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  margin-bottom: 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 0;
   overflow: hidden;
 }
 .reminder-header {
@@ -2260,41 +2279,42 @@ a:hover {
   cursor: pointer;
   user-select: none;
 }
-.reminder-header:hover { background: rgba(255,255,255,0.03); }
+.reminder-header:hover { background: var(--surface-soft); }
 .reminder-title { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; }
-.reminder-badge { background: #f59e0b; color: #000; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 10px; }
-.reminder-badge.critical { background: #ef4444; color: #fff; }
-.reminder-badge-inline { display: inline-block; background: #f59e0b; color: #000; font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 8px; margin-left: 4px; }
-.reminder-badge-inline.critical { background: #ef4444; color: #fff; }
+.reminder-badge { background: var(--amber); color: #fff; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 10px; }
+.reminder-badge.critical { background: var(--red); color: #fff; }
+.reminder-badge-inline { display: inline-block; background: var(--amber); color: #fff; font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 8px; margin-left: 4px; }
+.reminder-badge-inline.critical { background: var(--red); color: #fff; }
 .reminder-header-right { display: flex; align-items: center; gap: 10px; }
-.reminder-refresh { background: none; border: none; cursor: pointer; color: var(--muted); padding: 4px; display: flex; }
+.reminder-refresh { background: none; border: none; cursor: pointer; color: var(--muted); padding: 4px; display: flex; min-height: auto; }
 .reminder-refresh:disabled { opacity: 0.5; cursor: default; }
 .reminder-chevron { font-size: 11px; color: var(--muted); }
-.reminder-list { border-top: 1px solid var(--border); max-height: 380px; overflow-y: auto; }
+.reminder-list { border-top: 1px solid var(--line); max-height: 380px; overflow-y: auto; }
 .reminder-empty { padding: 20px 18px; font-size: 13px; color: var(--muted); }
 .reminder-item {
   display: flex;
   align-items: flex-start;
   gap: 12px;
   padding: 12px 18px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--line-soft);
   transition: background 0.15s;
 }
 .reminder-item:last-child { border-bottom: none; }
-.reminder-item:hover { background: rgba(255,255,255,0.03); }
-.reminder-item.rem-critical { border-left: 3px solid #ef4444; }
-.reminder-item.rem-warning { border-left: 3px solid #f59e0b; }
-.reminder-item.rem-info { border-left: 3px solid #3b82f6; }
+.reminder-item:hover { background: var(--surface-soft); }
+.reminder-item.read { opacity: 0.55; }
+.reminder-item.rem-critical { border-left: 3px solid var(--red); }
+.reminder-item.rem-warning { border-left: 3px solid var(--amber); }
+.reminder-item.rem-info { border-left: 3px solid var(--blue); }
 .reminder-icon-wrap { padding-top: 2px; color: var(--muted); flex-shrink: 0; }
-.reminder-item.rem-critical .reminder-icon-wrap { color: #ef4444; }
-.reminder-item.rem-warning .reminder-icon-wrap { color: #f59e0b; }
+.reminder-item.rem-critical .reminder-icon-wrap { color: var(--red); }
+.reminder-item.rem-warning .reminder-icon-wrap { color: var(--amber); }
 .reminder-body { flex: 1; min-width: 0; }
 .reminder-msg { font-size: 13px; line-height: 1.4; }
 .reminder-meta { display: flex; gap: 10px; margin-top: 4px; }
 .reminder-days { font-size: 11px; font-weight: 700; color: var(--muted); }
-.reminder-days.overdue { color: #ef4444; }
+.reminder-days.overdue { color: var(--red); }
 .reminder-score { font-size: 11px; color: var(--muted); }
-.reminder-alert-icon { color: #ef4444; flex-shrink: 0; margin-top: 2px; }
+.reminder-alert-icon { color: var(--red); flex-shrink: 0; margin-top: 2px; }
 
 /* ============================================================
    AI Tender Discovery

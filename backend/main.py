@@ -9,7 +9,7 @@ import threading
 from datetime import datetime, timedelta
 from io import BytesIO
 
-from fastapi import FastAPI, Request, UploadFile, File, Form, Depends, Header, HTTPException
+from fastapi import FastAPI, Request, UploadFile, File, Form, Depends, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 from database import Base, engine, SessionLocal
 from models import (
     Tender, User, DiscoveredTender, Organization, OrgMembership, OrgInvite, ApprovalRequest,
-    Comment, Task as TaskModel, Vendor, TenderVendorLink, Contract,
+    Comment, Task as TaskModel, Vendor, TenderVendorLink, Contract, Notification,
 )
 from hermes_client import (
     analyze_with_gemini, parse_gemini_response, stream_with_gemini,
@@ -115,6 +115,9 @@ def ensure_schema():
 
     if not inspector.has_table("contracts"):
         Base.metadata.tables["contracts"].create(bind=engine)
+
+    if not inspector.has_table("notifications"):
+        Base.metadata.tables["notifications"].create(bind=engine)
 
     if inspector.has_table("tenders"):
         existing = {c["name"] for c in inspector.get_columns("tenders")}
@@ -897,6 +900,11 @@ def accept_invite(
         ))
 
     invite.status = "accepted"
+    _notify(
+        db, invite.organization_id, invite.invited_by_user_id, "member_invited",
+        title=f"{current_user.email} accepted your invite",
+        entity_type=None, entity_id=None,
+    )
     db.commit()
     org = _get_org(invite.organization_id, db)
     return {"detail": "Invite accepted.", "organization": {"id": org.id, "name": org.name}}
@@ -1401,6 +1409,38 @@ def export_pdf(
 
 
 # ---------------------------------------------------------------------------
+# Notifications (event-driven inserts — see also the Calendar & Notifications
+# section further down for the read/list endpoints and computed-on-read reminders)
+# ---------------------------------------------------------------------------
+
+def _notify(
+    db: Session, organization_id: int, user_id: int, type: str,
+    title: str, message: str = "", urgency: str = "info",
+    entity_type: str | None = None, entity_id: int | None = None,
+) -> None:
+    db.add(Notification(
+        organization_id=organization_id, user_id=user_id, type=type,
+        entity_type=entity_type, entity_id=entity_id,
+        title=title, message=message, urgency=urgency,
+    ))
+
+
+def _notify_admins(
+    db: Session, organization_id: int, exclude_user_id: int, type: str,
+    title: str, message: str = "", urgency: str = "info",
+    entity_type: str | None = None, entity_id: int | None = None,
+) -> None:
+    admins = db.query(OrgMembership).filter(
+        OrgMembership.organization_id == organization_id,
+        OrgMembership.status == "active",
+        OrgMembership.role.in_(("owner", "admin")),
+        OrgMembership.user_id != exclude_user_id,
+    ).all()
+    for m in admins:
+        _notify(db, organization_id, m.user_id, type, title, message, urgency, entity_type, entity_id)
+
+
+# ---------------------------------------------------------------------------
 # Approval Workflow
 # ---------------------------------------------------------------------------
 
@@ -1449,6 +1489,11 @@ def request_approval(
     )
     db.add(approval)
     tender.approval_status = "pending"
+    _notify_admins(
+        db, membership.organization_id, membership.user_id, "approval_requested",
+        title=f'Approval requested: "{tender.title}"',
+        urgency="warning", entity_type="tender", entity_id=tender.id,
+    )
     db.commit()
     db.refresh(approval)
     return _approval_response(approval)
@@ -1505,6 +1550,14 @@ def decide_approval(
     pending.reviewer_note = payload.note.strip()
     pending.reviewed_at = datetime.utcnow()
     tender.approval_status = payload.decision
+    if pending.requested_by_user_id != membership.user_id:
+        _notify(
+            db, membership.organization_id, pending.requested_by_user_id, "approval_decided",
+            title=f'Tender "{tender.title}" was {payload.decision}',
+            message=pending.reviewer_note,
+            urgency="critical" if payload.decision == "rejected" else "info",
+            entity_type="tender", entity_id=tender.id,
+        )
     db.commit()
     return _approval_response(pending)
 
@@ -1649,6 +1702,32 @@ def list_comments(
     return [_comment_response(c, users) for c in comments]
 
 
+def _entity_owner_user_id(entity_type: str, entity_id: int, db: Session) -> int | None:
+    if entity_type == "tender":
+        row = db.query(Tender).filter(Tender.id == entity_id).first()
+        return row.user_id if row else None
+    if entity_type == "vendor":
+        row = db.query(Vendor).filter(Vendor.id == entity_id).first()
+        return row.created_by_user_id if row else None
+    if entity_type == "contract":
+        row = db.query(Contract).filter(Contract.id == entity_id).first()
+        return row.created_by_user_id if row else None
+    return None
+
+
+def _entity_title(entity_type: str, entity_id: int, db: Session) -> str:
+    if entity_type == "tender":
+        row = db.query(Tender).filter(Tender.id == entity_id).first()
+        return row.title if row else "tender"
+    if entity_type == "vendor":
+        row = db.query(Vendor).filter(Vendor.id == entity_id).first()
+        return row.name if row else "vendor"
+    if entity_type == "contract":
+        row = db.query(Contract).filter(Contract.id == entity_id).first()
+        return row.title if row else "contract"
+    return entity_type
+
+
 @app.post("/comments")
 def create_comment(
     payload: CommentCreate,
@@ -1668,6 +1747,16 @@ def create_comment(
         body=body,
     )
     db.add(comment)
+
+    owner_id = _entity_owner_user_id(payload.entity_type, payload.entity_id, db)
+    if owner_id and owner_id != membership.user_id:
+        _notify(
+            db, membership.organization_id, owner_id, "comment_added",
+            title=f'New comment on "{_entity_title(payload.entity_type, payload.entity_id, db)}"',
+            message=body[:200],
+            entity_type=payload.entity_type, entity_id=payload.entity_id,
+        )
+
     db.commit()
     db.refresh(comment)
     return _comment_response(comment, _users_by_id([comment.author_user_id], db))
@@ -1796,6 +1885,14 @@ def create_task(
         due_date=_parse_deadline(payload.due_date),
     )
     db.add(task)
+
+    if payload.assignee_user_id and payload.assignee_user_id != membership.user_id:
+        _notify(
+            db, membership.organization_id, payload.assignee_user_id, "task_assigned",
+            title=f'You were assigned: "{title}"',
+            entity_type=payload.entity_type, entity_id=payload.entity_id,
+        )
+
     db.commit()
     db.refresh(task)
     return _task_response(task, _users_by_id([task.assignee_user_id, task.created_by_user_id], db))
@@ -1824,7 +1921,14 @@ def update_task(
     if payload.description is not None:
         task.description = payload.description
     if payload.assignee_user_id is not None:
+        reassigned = payload.assignee_user_id != task.assignee_user_id
         task.assignee_user_id = payload.assignee_user_id
+        if reassigned and payload.assignee_user_id != membership.user_id:
+            _notify(
+                db, membership.organization_id, payload.assignee_user_id, "task_assigned",
+                title=f'You were assigned: "{task.title}"',
+                entity_type=task.entity_type, entity_id=task.entity_id,
+            )
     if payload.status is not None:
         if payload.status not in VALID_TASK_STATUSES:
             raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {', '.join(sorted(VALID_TASK_STATUSES))}")
@@ -2474,17 +2578,15 @@ async def validate_doc(
 
 
 # ---------------------------------------------------------------------------
-# AI Auto Reminders
+# Calendar & Notifications
 # ---------------------------------------------------------------------------
 
-@app.get("/reminders")
-def get_reminders(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-    membership: OrgMembership = Depends(get_current_membership),
-):
+def _computed_reminders(db: Session, current_user: User, membership: OrgMembership) -> list[dict]:
+    """Deadline/high-score/cert/contract-expiry reminders, recomputed on every
+    call (not persisted — there's nothing meaningful to mark 'read' on a fact
+    like 'this deadline is in 3 days', it's just always true until it isn't)."""
     now = datetime.utcnow()
-    reminders = []
+    reminders: list[dict] = []
 
     upcoming = (
         db.query(Tender)
@@ -2501,13 +2603,9 @@ def get_reminders(
         days_left = (t.deadline - now).days
         urgency = "critical" if days_left <= 2 else "warning" if days_left <= 5 else "info"
         reminders.append({
-            "type": "deadline",
-            "tender_id": t.id,
-            "title": t.title,
-            "deadline": t.deadline,
-            "days_left": days_left,
-            "bid_status": t.bid_status,
-            "bid_score": t.bid_score,
+            "id": None, "persisted": False, "read_at": None,
+            "type": "deadline", "entity_type": "tender", "entity_id": t.id,
+            "title": t.title, "deadline": t.deadline, "days_left": days_left,
             "urgency": urgency,
             "message": (
                 f"{'URGENT: ' if urgency == 'critical' else ''}"
@@ -2527,21 +2625,41 @@ def get_reminders(
         .all()
     )
     for t in high_score_reviewing:
-        if any(r["tender_id"] == t.id and r["type"] == "deadline" for r in reminders):
+        if any(r["entity_id"] == t.id and r["type"] == "deadline" for r in reminders):
             continue
         reminders.append({
-            "type": "high_score",
-            "tender_id": t.id,
-            "title": t.title,
-            "deadline": t.deadline,
+            "id": None, "persisted": False, "read_at": None,
+            "type": "high_score", "entity_type": "tender", "entity_id": t.id,
+            "title": t.title, "deadline": t.deadline,
             "days_left": (t.deadline - now).days if t.deadline else None,
-            "bid_status": t.bid_status,
-            "bid_score": t.bid_score,
             "urgency": "info",
             "message": (
                 f"High-opportunity tender \"{t.title}\" (score {t.bid_score}/100) "
                 "is still under review. Consider submitting."
             ),
+        })
+
+    contracts_expiring = (
+        db.query(Contract)
+        .filter(
+            Contract.organization_id == membership.organization_id,
+            Contract.status == "active",
+            Contract.end_date.isnot(None),
+            Contract.end_date >= now,
+            Contract.end_date <= now + timedelta(days=30),
+        )
+        .order_by(Contract.end_date.asc())
+        .all()
+    )
+    for c in contracts_expiring:
+        days_left = (c.end_date - now).days
+        urgency = "critical" if days_left <= 7 else "warning" if days_left <= 14 else "info"
+        reminders.append({
+            "id": None, "persisted": False, "read_at": None,
+            "type": "contract_expiry", "entity_type": "contract", "entity_id": c.id,
+            "title": c.title, "deadline": c.end_date, "days_left": days_left,
+            "urgency": urgency,
+            "message": f"Contract \"{c.title}\" ends in {days_left} day{'s' if days_left != 1 else ''}.",
         })
 
     try:
@@ -2559,13 +2677,9 @@ def get_reminders(
                 urgency = "critical" if days_until_exp < 0 else ("warning" if days_until_exp <= 14 else "info")
                 name = cert.get("name") or cert.get("cert_name") or "Certificate"
                 reminders.append({
-                    "type": "cert_expiry",
-                    "tender_id": None,
-                    "title": name,
-                    "deadline": exp_dt,
-                    "days_left": days_until_exp,
-                    "bid_status": None,
-                    "bid_score": None,
+                    "id": None, "persisted": False, "read_at": None,
+                    "type": "cert_expiry", "entity_type": None, "entity_id": None,
+                    "title": name, "deadline": exp_dt, "days_left": days_until_exp,
                     "urgency": urgency,
                     "message": (
                         f"{'EXPIRED: ' if days_until_exp < 0 else ''}"
@@ -2577,13 +2691,137 @@ def get_reminders(
     except Exception:
         pass
 
-    urgency_order = {"critical": 0, "warning": 1, "info": 2}
-    reminders.sort(key=lambda r: (
-        urgency_order.get(r["urgency"], 9),
-        r["days_left"] if r["days_left"] is not None else 9999,
-    ))
+    return reminders
 
-    return {"reminders": reminders, "count": len(reminders)}
+
+def _notification_response(n: Notification) -> dict:
+    return {
+        "id": n.id, "persisted": True,
+        "type": n.type, "entity_type": n.entity_type, "entity_id": n.entity_id,
+        "title": n.title, "message": n.message or "", "urgency": n.urgency or "info",
+        "read_at": n.read_at, "created_at": n.created_at,
+    }
+
+
+@app.get("/notifications")
+def list_notifications(
+    unread_only: bool = False,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    membership: OrgMembership = Depends(get_current_membership),
+):
+    query = db.query(Notification).filter(
+        Notification.organization_id == membership.organization_id,
+        Notification.user_id == membership.user_id,
+    )
+    if unread_only:
+        query = query.filter(Notification.read_at.is_(None))
+    persisted = query.order_by(Notification.id.desc()).limit(max(1, min(limit, 200))).all()
+
+    combined = [_notification_response(n) for n in persisted] + _computed_reminders(db, current_user, membership)
+    urgency_order = {"critical": 0, "warning": 1, "info": 2}
+
+    def sort_key(r: dict):
+        unread = 0 if (not r["persisted"] or r["read_at"] is None) else 1
+        urgency_rank = urgency_order.get(r["urgency"], 9)
+        ts = r.get("created_at") or r.get("deadline") or datetime.utcnow()
+        return (unread, urgency_rank, -ts.timestamp())
+
+    combined.sort(key=sort_key)
+
+    unread_count = sum(1 for r in combined if not r["persisted"] or r["read_at"] is None)
+    return {"notifications": combined, "count": len(combined), "unread_count": unread_count}
+
+
+@app.post("/notifications/{notification_id}/read")
+def mark_notification_read(
+    notification_id: int,
+    db: Session = Depends(get_db),
+    membership: OrgMembership = Depends(get_current_membership),
+):
+    notification = db.query(Notification).filter(
+        Notification.id == notification_id,
+        Notification.organization_id == membership.organization_id,
+        Notification.user_id == membership.user_id,
+    ).first()
+    if not notification:
+        raise HTTPException(status_code=404, detail="Notification not found.")
+    notification.read_at = datetime.utcnow()
+    db.commit()
+    return _notification_response(notification)
+
+
+@app.post("/notifications/read-all")
+def mark_all_notifications_read(
+    db: Session = Depends(get_db),
+    membership: OrgMembership = Depends(get_current_membership),
+):
+    now = datetime.utcnow()
+    db.query(Notification).filter(
+        Notification.organization_id == membership.organization_id,
+        Notification.user_id == membership.user_id,
+        Notification.read_at.is_(None),
+    ).update({"read_at": now})
+    db.commit()
+    return {"detail": "All notifications marked read."}
+
+
+@app.get("/calendar")
+def get_calendar(
+    from_: str | None = Query(default=None, alias="from"),
+    to: str | None = None,
+    db: Session = Depends(get_db),
+    membership: OrgMembership = Depends(get_current_membership),
+):
+    now = datetime.utcnow()
+    range_start = _parse_deadline(from_) or (now - timedelta(days=30))
+    range_end = _parse_deadline(to) or (now + timedelta(days=180))
+
+    events: list[dict] = []
+
+    tenders = db.query(Tender).filter(
+        Tender.organization_id == membership.organization_id,
+        Tender.deadline.isnot(None),
+        Tender.deadline >= range_start,
+        Tender.deadline <= range_end,
+    ).all()
+    for t in tenders:
+        events.append({
+            "date": t.deadline, "type": "tender_deadline",
+            "entity_type": "tender", "entity_id": t.id, "title": t.title,
+            "urgency": "critical" if (t.deadline - now).days <= 2 else "warning" if (t.deadline - now).days <= 5 else "info",
+        })
+
+    contracts = db.query(Contract).filter(
+        Contract.organization_id == membership.organization_id,
+        Contract.end_date.isnot(None),
+        Contract.end_date >= range_start,
+        Contract.end_date <= range_end,
+    ).all()
+    for c in contracts:
+        events.append({
+            "date": c.end_date, "type": "contract_end",
+            "entity_type": "contract", "entity_id": c.id, "title": c.title,
+            "urgency": "warning" if (c.end_date - now).days <= 14 else "info",
+        })
+
+    tasks = db.query(TaskModel).filter(
+        TaskModel.organization_id == membership.organization_id,
+        TaskModel.due_date.isnot(None),
+        TaskModel.due_date >= range_start,
+        TaskModel.due_date <= range_end,
+        TaskModel.status.notin_(("done", "cancelled")),
+    ).all()
+    for tk in tasks:
+        events.append({
+            "date": tk.due_date, "type": "task_due",
+            "entity_type": tk.entity_type, "entity_id": tk.entity_id, "title": tk.title,
+            "urgency": "warning" if (tk.due_date - now).days <= 2 else "info",
+        })
+
+    events.sort(key=lambda e: e["date"])
+    return {"events": events}
 
 
 # ---------------------------------------------------------------------------
