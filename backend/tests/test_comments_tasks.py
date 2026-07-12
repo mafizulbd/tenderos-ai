@@ -55,10 +55,17 @@ def test_comment_requires_valid_entity(client, org_owner):
 
     r2 = client.post(
         "/comments",
-        json={"entity_type": "vendor", "entity_id": 1, "body": "x"},
+        json={"entity_type": "contract", "entity_id": 1, "body": "x"},
         headers=org_owner["headers"],
     )
     assert r2.status_code == 400
+
+    r3 = client.post(
+        "/comments",
+        json={"entity_type": "vendor", "entity_id": 99999, "body": "x"},
+        headers=org_owner["headers"],
+    )
+    assert r3.status_code == 404
 
 
 def test_only_author_can_edit_comment(client, org_with_member):

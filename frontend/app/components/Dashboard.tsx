@@ -6,6 +6,7 @@ import { MetricsGrid } from "./MetricsGrid";
 import { UploadPanel } from "./UploadPanel";
 import { ProfilePanel } from "./ProfilePanel";
 import { TeamPanel } from "./TeamPanel";
+import { VendorLibrary } from "./VendorLibrary";
 import { KnowledgeBasePanel } from "./KnowledgeBasePanel";
 import { TenderCalendar } from "./TenderCalendar";
 import { TenderLibrary } from "./TenderLibrary";
@@ -133,6 +134,8 @@ export function Dashboard({
         <div id="doc-validator">
           <DocumentValidator token={token} />
         </div>
+
+        <VendorLibrary token={token} organization={organization} currentUserId={user.id} />
 
         <section className="library-layout">
           <TenderLibrary

@@ -10,6 +10,7 @@ import { BidStrategyPanel } from "./BidStrategyPanel";
 import { ApprovalPanel } from "./ApprovalPanel";
 import { CommentsPanel } from "./CommentsPanel";
 import { TasksPanel } from "./TasksPanel";
+import { LinkedVendorsPanel } from "./LinkedVendorsPanel";
 import type { Organization, TenderDetail as TDetail } from "../types";
 
 const BID_STATUSES = [
@@ -63,6 +64,8 @@ export function TenderDetail({ tender, token, organization, currentUserId, onUpd
 
   const busy = reanalyzing || downloadingDocx || downloadingPdf || savingNotes;
   const decision = extractDecision(tender.bid_recommendation);
+  const canModify =
+    organization?.role === "owner" || organization?.role === "admin" || tender.user_id === currentUserId;
 
   async function reanalyze() {
     setReanalyzing(true);
@@ -266,6 +269,12 @@ export function TenderDetail({ tender, token, organization, currentUserId, onUpd
         token={token}
         organization={organization}
         onUpdated={onUpdated}
+      />
+
+      <LinkedVendorsPanel
+        tenderId={tender.id}
+        token={token}
+        canModify={canModify}
       />
 
       <TasksPanel

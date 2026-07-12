@@ -20,7 +20,10 @@ from sqlalchemy import inspect, or_, text
 from sqlalchemy.orm import Session
 
 from database import Base, engine, SessionLocal
-from models import Tender, User, DiscoveredTender, Organization, OrgMembership, OrgInvite, ApprovalRequest, Comment, Task as TaskModel
+from models import (
+    Tender, User, DiscoveredTender, Organization, OrgMembership, OrgInvite, ApprovalRequest,
+    Comment, Task as TaskModel, Vendor, TenderVendorLink,
+)
 from hermes_client import (
     analyze_with_gemini, parse_gemini_response, stream_with_gemini,
     stream_personalized_proposal, stream_bid_strategy, validate_document,
@@ -103,6 +106,12 @@ def ensure_schema():
 
     if not inspector.has_table("tasks"):
         Base.metadata.tables["tasks"].create(bind=engine)
+
+    if not inspector.has_table("vendors"):
+        Base.metadata.tables["vendors"].create(bind=engine)
+
+    if not inspector.has_table("tender_vendor_links"):
+        Base.metadata.tables["tender_vendor_links"].create(bind=engine)
 
     if inspector.has_table("tenders"):
         existing = {c["name"] for c in inspector.get_columns("tenders")}
@@ -231,6 +240,34 @@ class TaskUpdate(BaseModel):
     assignee_user_id: int | None = None
     status: str | None = None
     due_date: str | None = None
+
+
+class VendorCreate(BaseModel):
+    name: str
+    contact_name: str = ""
+    email: str = ""
+    phone: str = ""
+    address: str = ""
+    category: str = ""
+    rating: int | None = None
+    notes: str = ""
+
+
+class VendorUpdate(BaseModel):
+    name: str | None = None
+    contact_name: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    address: str | None = None
+    category: str | None = None
+    rating: int | None = None
+    notes: str | None = None
+
+
+class VendorLinkCreate(BaseModel):
+    vendor_id: int
+    role: str = ""
+    notes: str = ""
 
 
 class ReanalyzeRequest(BaseModel):
@@ -449,6 +486,7 @@ def extract_text_from_file(file_name: str, content: bytes) -> str:
 def get_tender_response(tender: Tender) -> dict:
     return {
         "id": tender.id,
+        "user_id": tender.user_id,
         "title": tender.title,
         "language": tender.language,
         "status": tender.status,
@@ -875,6 +913,7 @@ def list_tenders(
     return [
         {
             "id": t.id,
+            "user_id": t.user_id,
             "title": t.title,
             "language": t.language,
             "status": t.status,
@@ -1487,7 +1526,7 @@ def list_pending_approvals(
 # Comments & Tasks
 # ---------------------------------------------------------------------------
 
-VALID_ENTITY_TYPES = {"tender"}  # widened to vendor/contract once those stages exist
+VALID_ENTITY_TYPES = {"tender", "vendor"}  # widened to contract once that stage exists
 VALID_TASK_STATUSES = {"open", "in_progress", "done", "cancelled"}
 
 
@@ -1503,6 +1542,12 @@ def _validate_entity(entity_type: str, entity_id: int, organization_id: int, db:
         ).first()
         if not exists:
             raise HTTPException(status_code=404, detail="Tender not found.")
+    elif entity_type == "vendor":
+        exists = db.query(Vendor).filter(
+            Vendor.id == entity_id, Vendor.organization_id == organization_id
+        ).first()
+        if not exists:
+            raise HTTPException(status_code=404, detail="Vendor not found.")
 
 
 def _users_by_id(user_ids: list[int | None], db: Session) -> dict[int, User]:
@@ -1773,6 +1818,219 @@ def delete_task(
     db.delete(task)
     db.commit()
     return {"detail": "Task deleted."}
+
+
+# ---------------------------------------------------------------------------
+# Vendor Management
+# ---------------------------------------------------------------------------
+
+def _can_modify_vendor(vendor: Vendor, membership: OrgMembership) -> bool:
+    return membership.role in ("owner", "admin") or vendor.created_by_user_id == membership.user_id
+
+
+def _vendor_response(v: Vendor) -> dict:
+    return {
+        "id": v.id,
+        "name": v.name,
+        "contact_name": v.contact_name or "",
+        "email": v.email or "",
+        "phone": v.phone or "",
+        "address": v.address or "",
+        "category": v.category or "",
+        "rating": v.rating,
+        "notes": v.notes or "",
+        "created_by_user_id": v.created_by_user_id,
+        "created_at": v.created_at,
+        "updated_at": v.updated_at,
+    }
+
+
+def _get_org_vendor(vendor_id: int, membership: OrgMembership, db: Session) -> Vendor:
+    vendor = db.query(Vendor).filter(
+        Vendor.id == vendor_id, Vendor.organization_id == membership.organization_id
+    ).first()
+    if not vendor:
+        raise HTTPException(status_code=404, detail="Vendor not found.")
+    return vendor
+
+
+@app.get("/vendors")
+def list_vendors(
+    search: str = "",
+    category: str = "",
+    db: Session = Depends(get_db),
+    membership: OrgMembership = Depends(get_current_membership),
+):
+    query = db.query(Vendor).filter(Vendor.organization_id == membership.organization_id)
+    if search.strip():
+        term = f"%{search.strip()}%"
+        query = query.filter(or_(Vendor.name.ilike(term), Vendor.contact_name.ilike(term)))
+    if category.strip():
+        query = query.filter(Vendor.category == category.strip())
+    vendors = query.order_by(Vendor.name.asc()).all()
+    return [_vendor_response(v) for v in vendors]
+
+
+@app.post("/vendors")
+def create_vendor(
+    payload: VendorCreate,
+    db: Session = Depends(get_db),
+    membership: OrgMembership = Depends(get_current_membership),
+):
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Vendor name is required.")
+
+    vendor = Vendor(
+        organization_id=membership.organization_id,
+        name=name,
+        contact_name=payload.contact_name.strip(),
+        email=payload.email.strip(),
+        phone=payload.phone.strip(),
+        address=payload.address.strip(),
+        category=payload.category.strip(),
+        rating=payload.rating,
+        notes=payload.notes,
+        created_by_user_id=membership.user_id,
+    )
+    db.add(vendor)
+    db.commit()
+    db.refresh(vendor)
+    return _vendor_response(vendor)
+
+
+@app.get("/vendors/{vendor_id}")
+def get_vendor(
+    vendor_id: int,
+    db: Session = Depends(get_db),
+    membership: OrgMembership = Depends(get_current_membership),
+):
+    return _vendor_response(_get_org_vendor(vendor_id, membership, db))
+
+
+@app.patch("/vendors/{vendor_id}")
+def update_vendor(
+    vendor_id: int,
+    payload: VendorUpdate,
+    db: Session = Depends(get_db),
+    membership: OrgMembership = Depends(get_current_membership),
+):
+    vendor = _get_org_vendor(vendor_id, membership, db)
+    if not _can_modify_vendor(vendor, membership):
+        raise HTTPException(status_code=403, detail="You can only edit vendors you created.")
+
+    if payload.name is not None:
+        name = payload.name.strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Vendor name is required.")
+        vendor.name = name
+    if payload.contact_name is not None:
+        vendor.contact_name = payload.contact_name.strip()
+    if payload.email is not None:
+        vendor.email = payload.email.strip()
+    if payload.phone is not None:
+        vendor.phone = payload.phone.strip()
+    if payload.address is not None:
+        vendor.address = payload.address.strip()
+    if payload.category is not None:
+        vendor.category = payload.category.strip()
+    if payload.rating is not None:
+        vendor.rating = payload.rating
+    if payload.notes is not None:
+        vendor.notes = payload.notes
+
+    vendor.updated_at = datetime.utcnow()
+    db.commit()
+    return _vendor_response(vendor)
+
+
+@app.delete("/vendors/{vendor_id}")
+def delete_vendor(
+    vendor_id: int,
+    db: Session = Depends(get_db),
+    membership: OrgMembership = Depends(get_current_membership),
+):
+    vendor = _get_org_vendor(vendor_id, membership, db)
+    if not _can_modify_vendor(vendor, membership):
+        raise HTTPException(status_code=403, detail="You can only delete vendors you created.")
+
+    db.delete(vendor)
+    db.commit()
+    return {"detail": "Vendor deleted."}
+
+
+@app.get("/tenders/{tender_id}/vendors")
+def list_tender_vendors(
+    tender_id: int,
+    db: Session = Depends(get_db),
+    membership: OrgMembership = Depends(get_current_membership),
+):
+    tender = _get_org_tender(tender_id, membership, db)
+    links = db.query(TenderVendorLink).filter(TenderVendorLink.tender_id == tender.id).all()
+    vendors = {v.id: v for v in db.query(Vendor).filter(Vendor.id.in_([l.vendor_id for l in links])).all()}
+    return [
+        {
+            "link_id": link.id,
+            "role": link.role or "",
+            "notes": link.notes or "",
+            "created_at": link.created_at,
+            "vendor": _vendor_response(vendors[link.vendor_id]) if link.vendor_id in vendors else None,
+        }
+        for link in links
+    ]
+
+
+@app.post("/tenders/{tender_id}/vendors")
+def link_tender_vendor(
+    tender_id: int,
+    payload: VendorLinkCreate,
+    db: Session = Depends(get_db),
+    membership: OrgMembership = Depends(get_current_membership),
+):
+    tender = _get_org_tender(tender_id, membership, db)
+    if not _can_modify_tender(tender, membership):
+        raise HTTPException(status_code=403, detail="You can only link vendors to tenders you created.")
+    _get_org_vendor(payload.vendor_id, membership, db)
+
+    existing = db.query(TenderVendorLink).filter(
+        TenderVendorLink.tender_id == tender.id, TenderVendorLink.vendor_id == payload.vendor_id
+    ).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="This vendor is already linked to this tender.")
+
+    link = TenderVendorLink(
+        tender_id=tender.id, vendor_id=payload.vendor_id, role=payload.role, notes=payload.notes,
+    )
+    db.add(link)
+    db.commit()
+    db.refresh(link)
+    vendor = _get_org_vendor(payload.vendor_id, membership, db)
+    return {
+        "link_id": link.id, "role": link.role or "", "notes": link.notes or "",
+        "created_at": link.created_at, "vendor": _vendor_response(vendor),
+    }
+
+
+@app.delete("/tenders/{tender_id}/vendors/{vendor_id}")
+def unlink_tender_vendor(
+    tender_id: int,
+    vendor_id: int,
+    db: Session = Depends(get_db),
+    membership: OrgMembership = Depends(get_current_membership),
+):
+    tender = _get_org_tender(tender_id, membership, db)
+    if not _can_modify_tender(tender, membership):
+        raise HTTPException(status_code=403, detail="You can only unlink vendors from tenders you created.")
+
+    link = db.query(TenderVendorLink).filter(
+        TenderVendorLink.tender_id == tender.id, TenderVendorLink.vendor_id == vendor_id
+    ).first()
+    if not link:
+        raise HTTPException(status_code=404, detail="This vendor is not linked to this tender.")
+
+    db.delete(link)
+    db.commit()
+    return {"detail": "Vendor unlinked."}
 
 
 # ---------------------------------------------------------------------------

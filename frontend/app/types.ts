@@ -120,6 +120,29 @@ export type ApprovalRequest = {
   reviewed_at: string | null;
 };
 
+export type Vendor = {
+  id: number;
+  name: string;
+  contact_name: string;
+  email: string;
+  phone: string;
+  address: string;
+  category: string;
+  rating: number | null;
+  notes: string;
+  created_by_user_id: number;
+  created_at: string;
+  updated_at: string | null;
+};
+
+export type TenderVendorLink = {
+  link_id: number;
+  role: string;
+  notes: string;
+  created_at: string;
+  vendor: Vendor | null;
+};
+
 export type Comment = {
   id: number;
   entity_type: string;
@@ -151,6 +174,7 @@ export type Task = {
 
 export type TenderSummary = {
   id: number;
+  user_id: number;
   title: string;
   language: string;
   status: string;

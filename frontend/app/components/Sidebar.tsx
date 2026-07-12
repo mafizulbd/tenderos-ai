@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, Bell, BookOpen, BrainCircuit, Building2, FileSearch, FolderKanban, Globe, LogOut, ShieldCheck, UploadCloud, Users, Zap } from "lucide-react";
+import { BarChart3, Bell, BookOpen, BrainCircuit, Building, Building2, FileSearch, FolderKanban, Globe, LogOut, ShieldCheck, UploadCloud, Users, Zap } from "lucide-react";
 import type { Subscription, User } from "../types";
 
 type Props = {
@@ -64,6 +64,10 @@ export function Sidebar({ user, subscription, onLogout }: Props) {
         <a href="#discovery">
           <Globe size={18} />
           Discovery
+        </a>
+        <a href="#vendors">
+          <Building size={18} />
+          Vendors
         </a>
         <a href="#doc-validator">
           <ShieldCheck size={18} />

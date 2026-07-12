@@ -146,6 +146,36 @@ class Task(Base):
     updated_at = Column(DateTime, nullable=True)
 
 
+class Vendor(Base):
+    __tablename__ = "vendors"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    contact_name = Column(String(255), default="")
+    email = Column(String(255), default="")
+    phone = Column(String(100), default="")
+    address = Column(Text, default="")
+    category = Column(String(255), default="")     # e.g. subcontractor / supplier
+    rating = Column(Integer, nullable=True)          # 1-5
+    notes = Column(Text, default="")
+    created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=True)
+
+
+class TenderVendorLink(Base):
+    __tablename__ = "tender_vendor_links"
+    __table_args__ = (UniqueConstraint("tender_id", "vendor_id", name="uq_tender_vendor_link"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    tender_id = Column(Integer, ForeignKey("tenders.id"), nullable=False, index=True)
+    vendor_id = Column(Integer, ForeignKey("vendors.id"), nullable=False, index=True)
+    role = Column(String(100), default="")           # e.g. subcontractor, supplier
+    notes = Column(Text, default="")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class DiscoveredTender(Base):
     """Global pool of tenders discovered from external sources."""
     __tablename__ = "discovered_tenders"
