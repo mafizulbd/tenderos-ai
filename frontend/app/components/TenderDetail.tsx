@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowDownToLine, BrainCircuit, FileSearch, RefreshCw, Save } from "lucide-react";
+import { ArrowDownToLine, BrainCircuit, FileSearch, FileSignature, RefreshCw, Save } from "lucide-react";
 import { API_URL, apiRequest } from "../api";
 import { formatBytes, formatDate } from "../utils";
 import { Section } from "./Section";
@@ -61,6 +61,8 @@ export function TenderDetail({ tender, token, organization, currentUserId, onUpd
   const [localProposal, setLocalProposal] = useState(tender.personalized_proposal);
   const [localStrategy, setLocalStrategy] = useState(tender.bid_strategy);
   const [error, setError] = useState("");
+  const [creatingContract, setCreatingContract] = useState(false);
+  const [contractMessage, setContractMessage] = useState("");
 
   const busy = reanalyzing || downloadingDocx || downloadingPdf || savingNotes;
   const decision = extractDecision(tender.bid_recommendation);
@@ -100,6 +102,23 @@ export function TenderDetail({ tender, token, organization, currentUserId, onUpd
       setError(err instanceof Error ? err.message : "Save failed.");
     } finally {
       setSavingNotes(false);
+    }
+  }
+
+  async function createContract() {
+    setCreatingContract(true);
+    setContractMessage("");
+    try {
+      await apiRequest("/contracts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: `Contract: ${tender.title}`, tender_id: tender.id }),
+      }, token);
+      setContractMessage("Contract created — find it in the Contracts section.");
+    } catch (err: unknown) {
+      setContractMessage(err instanceof Error ? err.message : "Could not create contract.");
+    } finally {
+      setCreatingContract(false);
     }
   }
 
@@ -262,6 +281,16 @@ export function TenderDetail({ tender, token, organization, currentUserId, onUpd
             disabled={busy}
           />
         </label>
+
+        {tender.bid_status === "won" && canModify && (
+          <div className="detail-actions" style={{ marginTop: "0.75rem" }}>
+            <button onClick={createContract} disabled={creatingContract}>
+              <FileSignature size={16} />
+              {creatingContract ? "Creating..." : "Create contract"}
+            </button>
+          </div>
+        )}
+        {contractMessage && <p className="notice">{contractMessage}</p>}
       </section>
 
       <ApprovalPanel

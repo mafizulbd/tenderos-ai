@@ -176,6 +176,27 @@ class TenderVendorLink(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class Contract(Base):
+    __tablename__ = "contracts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    tender_id = Column(Integer, ForeignKey("tenders.id"), nullable=True, index=True)
+    vendor_id = Column(Integer, ForeignKey("vendors.id"), nullable=True, index=True)
+    title = Column(String(255), nullable=False)
+    counterparty_name = Column(String(255), default="")   # procuring entity name if no vendor_id
+    contract_value = Column(String(100), default="")
+    currency = Column(String(10), default="BDT")
+    start_date = Column(DateTime, nullable=True)
+    end_date = Column(DateTime, nullable=True)
+    status = Column(String(20), default="draft")            # draft/active/completed/terminated
+    performance_security = Column(String(255), default="")
+    notes = Column(Text, default="")
+    created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=True)
+
+
 class DiscoveredTender(Base):
     """Global pool of tenders discovered from external sources."""
     __tablename__ = "discovered_tenders"

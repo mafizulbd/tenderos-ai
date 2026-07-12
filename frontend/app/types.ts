@@ -135,6 +135,26 @@ export type Vendor = {
   updated_at: string | null;
 };
 
+export type ContractStatus = "draft" | "active" | "completed" | "terminated";
+
+export type Contract = {
+  id: number;
+  tender_id: number | null;
+  vendor_id: number | null;
+  title: string;
+  counterparty_name: string;
+  contract_value: string;
+  currency: string;
+  start_date: string | null;
+  end_date: string | null;
+  status: ContractStatus;
+  performance_security: string;
+  notes: string;
+  created_by_user_id: number;
+  created_at: string;
+  updated_at: string | null;
+};
+
 export type TenderVendorLink = {
   link_id: number;
   role: string;
