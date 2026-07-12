@@ -8,3 +8,10 @@ google-generativeai
 PyMuPDF
 python-docx
 requests
+alembic
+slowapi
+limits
+pytest
+httpx
+fpdf2
+beautifulsoup4

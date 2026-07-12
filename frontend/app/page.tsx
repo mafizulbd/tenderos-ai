@@ -1,124 +1,92 @@
 "use client";
 
-import { useState } from "react";
-import "./globals.css";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8008";
+import { useEffect, useState } from "react";
+import { AuthPage } from "./components/AuthPage";
+import { Dashboard } from "./components/Dashboard";
+import { apiRequest } from "./api";
+import type { Subscription, TenderDetail, TenderSummary, User } from "./types";
 
 export default function Home() {
-  const [title, setTitle] = useState("");
-  const [language, setLanguage] = useState("english");
-  const [file, setFile] = useState<File | null>(null);
-  const [result, setResult] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
+  const [token, setToken] = useState("");
+  const [user, setUser] = useState<User | null>(null);
+  const [subscription, setSubscription] = useState<Subscription | null>(null);
+  const [tenders, setTenders] = useState<TenderSummary[]>([]);
+  const [selectedTender, setSelectedTender] = useState<TenderDetail | null>(null);
 
-  async function analyzeTender() {
-    if (!title || !file) {
-      alert("Please enter title and upload a tender file.");
-      return;
-    }
+  useEffect(() => {
+    const saved = localStorage.getItem("tenderos_token") ?? "";
+    if (saved) setToken(saved);
+  }, []);
 
-    setLoading(true);
-    setResult(null);
+  useEffect(() => {
+    if (!token) return;
+    void loadAccount();
+    void loadTenders();
+    void loadSubscription();
+  }, [token]);
 
-    const formData = new FormData();
-    formData.append("title", title);
-    formData.append("language", language);
-    formData.append("file", file);
-
+  async function loadAccount() {
     try {
-      const response = await fetch(`${API_URL}/tenders/analyze`, {
-        method: "POST",
-        body: formData,
-      });
-
-      const text = await response.text();
-
-      if (!response.ok) {
-        throw new Error(`Backend error ${response.status}: ${text}`);
-      }
-
-      const data = JSON.parse(text);
-      setResult(data);
-    } catch (error: any) {
-      setResult({
-        error: `Failed to connect backend: ${error?.message || String(error)}`
-      });
-    } finally {
-      setLoading(false);
+      const data = await apiRequest<User>("/me", {}, token);
+      setUser(data);
+    } catch {
+      logout();
     }
   }
 
-  function Section({ title, content }: { title: string; content: string }) {
+  async function loadSubscription() {
+    try {
+      const data = await apiRequest<Subscription>("/subscription", {}, token);
+      setSubscription(data);
+    } catch {
+      // non-critical
+    }
+  }
+
+  async function loadTenders() {
+    try {
+      const data = await apiRequest<TenderSummary[]>("/tenders", {}, token);
+      setTenders(data);
+    } catch {
+      // silently fail — dashboard still usable
+    }
+  }
+
+  function logout() {
+    localStorage.removeItem("tenderos_token");
+    setToken("");
+    setUser(null);
+    setSubscription(null);
+    setTenders([]);
+    setSelectedTender(null);
+  }
+
+  if (!token || !user) {
     return (
-      <div className="card">
-        <h2>{title}</h2>
-        <pre>{content || "Not available"}</pre>
-      </div>
+      <AuthPage
+        onLogin={(t, u) => {
+          localStorage.setItem("tenderos_token", t);
+          setToken(t);
+          setUser(u);
+        }}
+      />
     );
   }
 
   return (
-    <main className="container">
-      <section className="hero">
-        <h1>TenderOS AI</h1>
-        <p>AI-powered Tender Analysis and Submission Drafting Platform</p>
-      </section>
-
-      <section className="card">
-        <h2>Upload Tender Document</h2>
-
-        <input
-          type="text"
-          placeholder="Tender title"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-        />
-
-        <select
-          value={language}
-          onChange={(e) => setLanguage(e.target.value)}
-        >
-          <option value="english">English</option>
-          <option value="bangla">বাংলা</option>
-        </select>
-
-        <input
-          type="file"
-          accept=".txt,.pdf,.doc,.docx"
-          onChange={(e) => setFile(e.target.files?.[0] || null)}
-        />
-
-        <button onClick={analyzeTender}>
-          {loading ? "Analyzing Tender..." : "Analyze Tender"}
-        </button>
-      </section>
-
-      {result?.error && (
-        <section className="card">
-          <h2>Error</h2>
-          <pre>{result.error}</pre>
-        </section>
-      )}
-
-      {result && !result.error && (
-        <>
-          <Section title="Executive Summary" content={result.summary} />
-          <Section title="Eligibility Criteria" content={result.eligibility} />
-          <Section title="Required Documents" content={result.required_documents} />
-          <Section title="Compliance Matrix" content={result.compliance_matrix} />
-          <Section title="Risk Analysis" content={result.risk_analysis} />
-          <Section title="Tender Submission Draft" content={result.proposal_draft} />
-          <Section title="Final Submission Checklist" content={result.final_checklist} />
-
-          <a
-            href={`${API_URL}/tenders/${result.id}/export-docx`}
-            target="_blank"
-          >
-            <button>Download DOCX Report</button>
-          </a>
-        </>
-      )}
-    </main>
+    <Dashboard
+      user={user}
+      token={token}
+      subscription={subscription}
+      tenders={tenders}
+      selectedTender={selectedTender}
+      setUser={setUser}
+      setSubscription={setSubscription}
+      setTenders={setTenders}
+      setSelectedTender={setSelectedTender}
+      loadTenders={loadTenders}
+      loadSubscription={loadSubscription}
+      logout={logout}
+    />
   );
 }

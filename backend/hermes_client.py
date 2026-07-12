@@ -1,106 +1,574 @@
+"""Gemini AI wrapper for tender analysis."""
+
 import os
 import re
+import time
+import logging
+from io import BytesIO
+
 import google.generativeai as genai
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+logger = logging.getLogger(__name__)
 
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel("gemini-2.5-flash")
+# Section order MUST match the prompt headings exactly — parser depends on this.
+_SECTIONS = [
+    ("summary",                r"### Executive Summary",              r"### Eligibility Criteria"),
+    ("eligibility",            r"### Eligibility Criteria",           r"### Financial Requirements"),
+    ("financial_requirements", r"### Financial Requirements",         r"### Required Documents"),
+    ("required_documents",     r"### Required Documents",             r"### Compliance Matrix"),
+    ("compliance_matrix",      r"### Compliance Matrix",              r"### Risk Analysis"),
+    ("risk_analysis",          r"### Risk Analysis",                  r"### Bid Recommendation"),
+    ("bid_recommendation",     r"### Bid Recommendation",             r"### Tender Submission Draft"),
+    ("proposal_draft",         r"### Tender Submission Draft",        r"### Final Submission Checklist"),
+    ("final_checklist",        r"### Final Submission Checklist",     None),
+]
 
+_LANG_INSTRUCTION = {
+    "english": "Respond entirely in English.",
+    "bangla": (
+        "Respond entirely in Bengali (Bangla / বাংলা). "
+        "Use formal Bengali suitable for government and business contexts. "
+        "Keep section headings (### ...) in English for parser stability."
+    ),
+}
 
-def extract_section(text: str, start: str, end: str | None = None) -> str:
-    if end:
-        pattern = rf"{start}(.*?){end}"
-    else:
-        pattern = rf"{start}(.*)"
-
-    match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
-    return match.group(1).strip() if match else "Not found in the document."
-
-
-def analyze_with_gemini(tender_text: str, language: str = "english") -> dict:
-    output_language = "Bangla" if language == "bangla" else "English"
-
-    prompt = f"""
-You are TenderOS AI, an expert tender preparation and proposal drafting assistant.
-
-Rules:
-- Write all section content in {output_language}.
-- Keep section headings exactly in English for parser stability.
-- Use only information found in the tender document.
-- Do not invent company history, certifications, project experience, team members, or pricing.
-- If information is missing, write: Not found in the document.
-- Keep analysis sections concise and practical.
-- The Tender Submission Draft should be formal, professional, and ready for editing/submission.
-
-Analyze the tender document and return the output EXACTLY using these section headings:
-
-### Executive Summary
-Summarize the tender purpose, procuring entity, key work/supply requirement, deadline, and main submission requirement.
-
-### Eligibility Criteria
-List eligibility conditions, qualification requirements, experience requirements, and bidder requirements found in the document.
-
-### Required Documents
-List all required documents, forms, certificates, declarations, financial documents, technical documents, and supporting papers.
-
-### Compliance Matrix
-Create a practical compliance matrix in text table format with columns:
-Requirement | Tender Clause/Reference | Required Action | Status
-
-### Risk Analysis
-Identify risks such as missing documents, strict deadlines, unclear clauses, penalties, bid security issues, technical compliance issues, or disqualification risks.
-
-### Tender Submission Draft
-Prepare a formal submission-ready tender proposal draft as if the bidder is submitting the tender.
-
-Include:
-1. Cover Letter
-2. Understanding of Requirement
-3. Technical Response
-4. Scope of Work / Supply
-5. Compliance Statement
-6. Delivery / Execution Commitment
-7. Conclusion
-
-Rules for this section:
-- Write in formal tender submission language.
-- Keep it directly relevant to the tender.
-- Use only facts from the tender document.
-- Do not add fake company experience.
-- Do not add fake certificates.
-- Do not add fake team members.
-- If bidder/company details are missing, use placeholders like [Company Name], [Authorized Representative], [Date].
-- The output should be ready for user editing and submission.
-
-### Final Submission Checklist
-Create a final checklist of actions before submission.
-
-Tender Document:
-{tender_text[:30000]}
+_BD_CONTEXT = """
+BANGLADESH PROCUREMENT CONTEXT:
+- Government procurement: Public Procurement Act 2006 (PPA 2006), Public Procurement Rules 2008 (PPR 2008).
+- Oversight: Central Procurement Technical Unit (CPTU) under IMED, Ministry of Planning.
+- e-GP system: eprocure.gov.bd — mandatory for government tenders above threshold.
+- Key procuring entities: LGED, RHD, BWDB, RAJUK, PWD, BREB, DESCO, DWASA, City Corporations, Ministries.
+- Procurement methods: OTM (Open Tendering Method), LTM (Limited Tendering Method), DPM (Direct Procurement), RFQ.
+- Key documents: IFB (Invitation for Bids), SBD (Standard Bidding Documents), BOQ (Bill of Quantities).
+- NGO/donor procurement: World Bank (STEP), ADB, UNDP, USAID, EU, FCDO/DFID guidelines apply.
+- Eligibility documents: Trade License, TIN, VAT/BIN, IRC/ERC (import/export), experience certificates, bank solvency.
+- Financial instruments: Bid Security/EMD (1-2% of bid value), Performance Security (10% of contract), Advance Payment Guarantee.
+- Currency: BDT (Taka, ৳).
+- Bid evaluation: LNRB (Lowest Negotiated Responsive Bid), post-qualification, technical-then-financial two-envelope.
 """
 
-    try:
-        response = model.generate_content(prompt)
-        raw = response.text.strip()
+_EMPTY_RESULT: dict = {k: None for k, *_ in _SECTIONS}
 
-        return {
-            "summary": extract_section(raw, r"### Executive Summary", r"### Eligibility Criteria"),
-            "eligibility": extract_section(raw, r"### Eligibility Criteria", r"### Required Documents"),
-            "required_documents": extract_section(raw, r"### Required Documents", r"### Compliance Matrix"),
-            "compliance_matrix": extract_section(raw, r"### Compliance Matrix", r"### Risk Analysis"),
-            "risk_analysis": extract_section(raw, r"### Risk Analysis", r"### Tender Submission Draft"),
-            "proposal_draft": extract_section(raw, r"### Tender Submission Draft", r"### Final Submission Checklist"),
-            "final_checklist": extract_section(raw, r"### Final Submission Checklist"),
-        }
 
-    except Exception as e:
-        return {
-            "summary": f"Gemini API Error: {str(e)}",
-            "eligibility": "Not generated",
-            "required_documents": "Not generated",
-            "compliance_matrix": "Not generated",
-            "risk_analysis": "Not generated",
-            "proposal_draft": "Not generated",
-            "final_checklist": "Not generated"
-        }
+def _build_prompt(text: str, language: str, company_profile: dict | None = None) -> str:
+    lang_instr = _LANG_INSTRUCTION.get(language, _LANG_INSTRUCTION["english"])
+
+    profile_text = "No bidder profile provided."
+    if company_profile:
+        lines = [
+            f"- {label}: {val}"
+            for label, key in [
+                ("Organization", "organization_name"),
+                ("Contact",      "contact_name"),
+                ("Email",        "email"),
+                ("Phone",        "phone"),
+                ("Address",      "address"),
+            ]
+            if (val := company_profile.get(key))
+        ]
+        if lines:
+            profile_text = "\n".join(lines)
+
+    return f"""You are TenderOS — an expert Bangladesh procurement and tender analysis AI.
+
+{_BD_CONTEXT}
+
+LANGUAGE: {lang_instr}
+RULES:
+- Use only information found in the provided tender document.
+- Do not invent figures, experience, certificates, or personnel.
+- Keep ### headings exactly as shown — they are parsed programmatically.
+- Write with formal, professional language appropriate for Bangladesh procurement context.
+
+Bidder Profile (use only in proposal draft):
+{profile_text}
+
+Analyze the tender document below. Produce output with EXACTLY these sections in order:
+
+### Executive Summary
+3-5 paragraphs: tender purpose, issuing entity, sector (Government/NGO/Private), procurement method, estimated value (if stated), submission deadline, bid opening date, contract duration, whether on e-GP or physical submission.
+
+### Eligibility Criteria
+All bidder eligibility requirements: legal registration, nationality, past experience (years/project count/minimum contract value), financial standing, blacklisting clauses, JV/consortium rules. Flag unusually restrictive conditions.
+
+### Financial Requirements
+All financial criteria and instruments:
+- Minimum annual turnover / average revenue
+- Bid Security / EMD: amount (৳), form (bank guarantee/payorder/DD), issuing bank requirements, validity
+- Performance Security: percentage, timeline, conditions
+- Working capital / net worth thresholds
+- Advance payment terms
+- Bank solvency certificate requirements
+Note all amounts in BDT (৳) and foreign currency equivalents if stated.
+
+### Required Documents
+Complete document list grouped by category (Legal, Financial, Technical, Experience). Mark each: M = Mandatory, C = Conditional. Include copy count, notarization, and attestation requirements.
+
+### Compliance Matrix
+| Requirement | Clause/Ref | Status | Action Required |
+|---|---|---|---|
+(Rows for every key requirement. Status: COMPLIANT / NEEDS-ACTION / GAP)
+
+### Risk Analysis
+At least 6 risks across: Technical, Financial, Legal/Compliance, Operational, and Bangladesh-specific (political calendar, monsoon/disaster, e-GP system, payment delay). For each: Severity (HIGH/MEDIUM/LOW), Likelihood, Mitigation.
+
+### Bid Recommendation
+IMPORTANT — start with exactly these two lines (no blank line between):
+BID SCORE: [integer 0-100]
+BID DECISION: [RECOMMENDED / CONDITIONAL / NOT RECOMMENDED]
+
+Scoring: 80-100 strong fit, 60-79 viable with prep, 40-59 significant gaps, 0-39 not viable.
+
+Then:
+1. Strategic Assessment (capability alignment)
+2. Key Strengths
+3. Critical Gaps (must resolve before bidding)
+4. Pre-bid Action Plan (e-GP registration, document checklist, sub-contractors, timeline)
+5. Win Probability and competitive landscape
+
+### Tender Submission Draft
+Professional bid cover letter and technical proposal introduction for Bangladesh submission context. Include IFB/SBD reference if known, standard formalities, compliance commitments per PPA 2006 / donor guidelines. Use placeholders [Company Name], [Date] where unknown. Ready-to-edit format.
+
+### Final Submission Checklist
+Numbered checklist covering: document preparation tasks, e-GP vs physical submission steps, key deadlines, bid security procurement, submission attendance and post-submission actions.
+
+TENDER DOCUMENT:
+{text[:18000]}
+"""
+
+
+def parse_gemini_response(text: str) -> dict:
+    result = dict(_EMPTY_RESULT)
+    for key, start_pattern, end_pattern in _SECTIONS:
+        start_match = re.search(start_pattern, text, re.MULTILINE)
+        if not start_match:
+            continue
+        content_start = start_match.end()
+        if end_pattern:
+            end_match = re.search(end_pattern, text[content_start:], re.MULTILINE)
+            content = (
+                text[content_start: content_start + end_match.start()]
+                if end_match
+                else text[content_start:]
+            )
+        else:
+            content = text[content_start:]
+        result[key] = content.strip()
+    return result
+
+
+def stream_with_gemini(text: str, language: str, company_profile: dict | None = None):
+    """Synchronous generator yielding text chunks from Gemini streaming API."""
+    genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+    model = genai.GenerativeModel("gemini-2.5-flash")
+    prompt = _build_prompt(text, language, company_profile)
+    for chunk in model.generate_content(prompt, stream=True):
+        if getattr(chunk, "text", None):
+            yield chunk.text
+
+
+def analyze_with_gemini(
+    text: str,
+    language: str = "english",
+    company_profile: dict | None = None,
+) -> dict:
+    """Full analysis with 3-attempt exponential-backoff retry."""
+    last_error: Exception | None = None
+    for attempt in range(3):
+        try:
+            full_text = "".join(stream_with_gemini(text, language, company_profile))
+            return parse_gemini_response(full_text)
+        except Exception as exc:
+            last_error = exc
+            logger.warning("Gemini attempt %d failed: %s", attempt + 1, exc)
+            time.sleep(2 ** attempt)
+
+    err = f"Gemini API Error after 3 attempts: {last_error}"
+    return {k: (err if k == "summary" else "Not generated") for k in _EMPTY_RESULT}
+
+
+# ---------------------------------------------------------------------------
+# Personalized Proposal Generator
+# ---------------------------------------------------------------------------
+
+def _build_proposal_prompt(
+    tender_analysis: dict,
+    company_kb: dict,
+    wizard_data: dict,
+    language: str = "english",
+) -> str:
+    lang_instr = _LANG_INSTRUCTION.get(language, _LANG_INSTRUCTION["english"])
+
+    # Format knowledge base sections
+    projects_text = ""
+    for i, p in enumerate(company_kb.get("past_projects", []), 1):
+        projects_text += (
+            f"\n  {i}. {p.get('name','—')} | Client: {p.get('client','—')} "
+            f"| Value: {p.get('value','—')} | Year: {p.get('year','—')} "
+            f"| Duration: {p.get('duration','—')} | Category: {p.get('category','—')}"
+        )
+
+    team_text = ""
+    for m in company_kb.get("technical_team", []):
+        team_text += (
+            f"\n  - {m.get('name','—')} | {m.get('role','—')} "
+            f"| {m.get('qualification','—')} | {m.get('experience','—')} exp."
+        )
+
+    equipment_text = ""
+    for e in company_kb.get("equipment", []):
+        owned = "Owned" if e.get("owned") else "Rented"
+        equipment_text += f"\n  - {e.get('name','—')} × {e.get('quantity',1)} ({owned})"
+
+    certs_text = ""
+    for c in company_kb.get("certifications", []):
+        certs_text += f"\n  - {c.get('name','—')} | No: {c.get('number','—')} | Expires: {c.get('expiry','—')}"
+
+    turnover_text = ""
+    for t in company_kb.get("annual_turnover", []):
+        turnover_text += f"\n  - {t.get('year','—')}: {t.get('amount','—')}"
+
+    return f"""You are TenderOS — an expert AI Procurement Proposal Writer for Bangladesh.
+
+{_BD_CONTEXT}
+
+LANGUAGE: {lang_instr}
+
+Generate a COMPLETE, PROFESSIONAL, SUBMISSION-READY tender proposal document.
+
+═══ TENDER ANALYSIS CONTEXT ═══
+Summary: {(tender_analysis.get('summary') or '')[:1200]}
+
+Eligibility Requirements:
+{(tender_analysis.get('eligibility') or '')[:800]}
+
+Financial Requirements:
+{(tender_analysis.get('financial_requirements') or '')[:600]}
+
+Required Documents:
+{(tender_analysis.get('required_documents') or '')[:600]}
+
+Compliance Issues:
+{(tender_analysis.get('compliance_matrix') or '')[:600]}
+
+Risk Analysis:
+{(tender_analysis.get('risk_analysis') or '')[:600]}
+
+═══ COMPANY KNOWLEDGE BASE ═══
+Company: {company_kb.get('company_name', wizard_data.get('company_name', '[Company Name]'))}
+TIN: {company_kb.get('tin', '[TIN]')}
+BIN/VAT: {company_kb.get('bin', '[BIN]')}
+Trade License: {company_kb.get('trade_license', '[TL No.]')} (Expires: {company_kb.get('trade_license_expiry', '—')})
+Address: {company_kb.get('address', wizard_data.get('address', '[Address]'))}
+Contact: {company_kb.get('contact_name', wizard_data.get('contact_name', '[Contact]'))} | {company_kb.get('phone', wizard_data.get('phone', '[Phone]'))}
+
+Annual Turnover:{turnover_text or ' Not specified'}
+
+Past Projects:{projects_text or ' No past projects provided'}
+
+Technical Team:{team_text or ' Not specified'}
+
+Equipment:{equipment_text or ' Not specified'}
+
+Certifications:{certs_text or ' None listed'}
+
+═══ BID-SPECIFIC INPUTS ═══
+Proposed Bid Price: BDT {wizard_data.get('bid_price', '[To be determined]')}
+Proposed Completion Time: {wizard_data.get('timeline', '[To be determined]')}
+Warranty Period: {wizard_data.get('warranty', '12 months')}
+Payment Terms Preference: {wizard_data.get('payment_terms', 'Monthly progress payment')}
+Project Manager: {wizard_data.get('project_manager', '[Project Manager Name]')}
+Additional Notes: {wizard_data.get('methodology', '')}
+
+═══ INSTRUCTIONS ═══
+Generate a complete, formal, submission-ready proposal with ALL of these numbered sections.
+Use placeholder text like [TO BE FILLED] for any unknown specific details.
+Write in formal, professional language appropriate for Bangladesh government/NGO procurement.
+
+## 1. COVER LETTER
+Formal cover letter on company letterhead format. Include IFB reference if determinable from context, date placeholder, procuring entity address, declaration of intent to bid, reference to enclosed documents.
+
+## 2. COMPANY INTRODUCTION & CREDENTIALS
+Overview of the company, year of establishment, core business areas, registration details (TIN, BIN, Trade License), organizational structure, quality management approach.
+
+## 3. UNDERSTANDING OF REQUIREMENTS
+Demonstrate thorough understanding of the tender scope, specific deliverables, technical specifications, and Bangladesh procurement standards that apply (PPA 2006 / PPR 2008).
+
+## 4. TECHNICAL APPROACH & METHODOLOGY
+Detailed methodology for completing the work. Include phases, milestones, quality controls, Bangladesh-specific considerations (monsoon season, local regulations, CPTU requirements). Reference relevant standards.
+
+## 5. IMPLEMENTATION PLAN & WORK SCHEDULE
+Week-by-week or month-by-month breakdown. Key milestones, dependencies, critical path activities. Formatted as a text-based schedule table.
+
+## 6. PROJECT TEAM STRUCTURE
+Team hierarchy and CV summaries for each person. Include: Name, Role, Qualification, Years of Experience, Key Responsibilities on this project.
+
+## 7. EQUIPMENT & RESOURCE PLAN
+List of equipment to be deployed. Source (owned/rented). Mobilization plan.
+
+## 8. PAST SIMILAR PROJECTS
+Table format for each project: Project Name, Client, Contract Value, Duration, Completion Year, Similarity to Current Tender, Client Contact Reference.
+
+## 9. FINANCIAL PROPOSAL SUMMARY
+Summarize the bid price breakdown (lump sum or key line items if BOQ-based). Payment milestone schedule aligned to work completion. Bid security confirmation.
+
+## 10. QUALITY ASSURANCE & COMPLIANCE
+Quality management approach. Standards to be followed. Inspection and testing plan. Bangladesh regulatory compliance (relevant BBS standards, BNBC, etc. as applicable).
+
+## 11. COMPLIANCE DECLARATION
+Formal declaration of compliance with all eligibility criteria, financial requirements, and submission requirements as specified in the SBD/IFB.
+
+## 12. CLOSING & DECLARATIONS
+Standard closing statements, authorized signatory placeholder, date, company seal reference.
+
+─────────────────────────────────────────────────────
+## WIN PROBABILITY ASSESSMENT (after proposal)
+─────────────────────────────────────────────────────
+After the proposal sections, provide a separate assessment:
+
+WIN PROBABILITY: [0-100]
+CONFIDENCE LEVEL: [HIGH / MEDIUM / LOW]
+
+TECHNICAL SCORE: [0-100] — [brief reason]
+COMMERCIAL SCORE: [0-100] — [brief reason]
+EXPERIENCE SCORE: [0-100] — [brief reason]
+COMPLIANCE SCORE: [0-100] — [brief reason]
+
+BID STRATEGY: [SUBMIT / CONDITIONAL / WITHDRAW]
+
+STRENGTHS:
+- [strength 1]
+- [strength 2]
+
+CRITICAL GAPS:
+- [gap 1]
+- [gap 2]
+
+RECOMMENDED ACTIONS BEFORE SUBMISSION:
+- [action 1]
+- [action 2]
+
+PRICE COMPETITIVENESS: [above/within/below expected range] — [explanation]
+"""
+
+
+def _build_bid_strategy_prompt(tender_analysis: dict, company_kb: dict, language: str = "english") -> str:
+    lang_instr = _LANG_INSTRUCTION.get(language, _LANG_INSTRUCTION["english"])
+
+    projects_text = ""
+    for i, p in enumerate(company_kb.get("past_projects", []), 1):
+        projects_text += (
+            f"\n  {i}. {p.get('name','—')} | Client: {p.get('client','—')} "
+            f"| Value: {p.get('value','—')} | Year: {p.get('year','—')} | Category: {p.get('category','—')}"
+        )
+
+    team_text = ""
+    for m in company_kb.get("technical_team", []):
+        team_text += f"\n  - {m.get('name','—')} ({m.get('role','—')}) — {m.get('experience','—')} exp."
+
+    turnover_text = ""
+    for t in company_kb.get("annual_turnover", []):
+        if t.get("amount"):
+            turnover_text += f"\n  - {t.get('year','?')}: {t.get('amount','?')}"
+
+    certs = ", ".join(c.get("name", "") for c in company_kb.get("certifications", []) if c.get("name"))
+    equipment = ", ".join(
+        f"{e.get('name','')}×{e.get('quantity',1)}" for e in company_kb.get("equipment", []) if e.get("name")
+    )
+
+    return f"""You are TenderOS — an expert AI Bid Strategy Advisor and Price Intelligence engine for Bangladesh procurement.
+
+{_BD_CONTEXT}
+
+LANGUAGE: {lang_instr}
+
+CRITICAL RULES:
+- Output MUST follow the EXACT format below — labels are parsed programmatically.
+- Estimate prices from tender scope even if not explicitly stated, using Bangladesh market rates.
+- Base match score on actual alignment between company KB and tender requirements.
+- Do NOT skip any output label.
+
+═══ TENDER ANALYSIS ═══
+Summary: {(tender_analysis.get('summary') or '')[:1000]}
+
+Eligibility Requirements:
+{(tender_analysis.get('eligibility') or '')[:700]}
+
+Financial Requirements:
+{(tender_analysis.get('financial_requirements') or '')[:600]}
+
+Compliance Matrix:
+{(tender_analysis.get('compliance_matrix') or '')[:800]}
+
+Risk Analysis:
+{(tender_analysis.get('risk_analysis') or '')[:600]}
+
+Bid Recommendation:
+{(tender_analysis.get('bid_recommendation') or '')[:400]}
+
+═══ COMPANY PROFILE ═══
+Company: {company_kb.get('company_name', '[Unknown]')}
+TIN: {company_kb.get('tin', 'Not provided')} | BIN: {company_kb.get('bin', 'Not provided')}
+Trade License: {company_kb.get('trade_license', 'Not provided')} (Expires: {company_kb.get('trade_license_expiry', '?')})
+Certifications: {certs or 'None listed'}
+Annual Turnover:{turnover_text or ' Not specified'}
+Past Projects:{projects_text or ' None added to KB'}
+Technical Team:{team_text or ' Not specified'}
+Equipment: {equipment or 'Not specified'}
+
+═══ REQUIRED OUTPUT (machine-parsed — use exact labels) ═══
+
+MATCH SCORE: [integer 0-100]
+BID STRATEGY: [SUBMIT / CONDITIONAL / WITHDRAW]
+RECOMMENDED PRICE: [e.g., ৳4.20 - ৳4.85 Crore, or "Insufficient data to estimate"]
+ESTIMATED MARKET PRICE: [e.g., ৳4.60 Crore, or "Unknown"]
+SUGGESTED MARGIN: [e.g., 18%, or "N/A"]
+BID CONFIDENCE: [integer 0-100]
+COMPETITION LEVEL: [HIGH / MEDIUM / LOW]
+PRICE RISK: [HIGH / MEDIUM / LOW]
+
+MATCH REASONS:
+- [specific reason — what in the company profile matches this tender]
+- [reason 2]
+- [reason 3]
+- [reason 4 if applicable]
+
+CRITICAL GAPS:
+- [specific gap — missing document, experience, certificate, or capacity]
+- [gap 2 if any, else write "None identified"]
+
+PRICE BREAKDOWN:
+[Detailed cost breakdown by category: Labour, Materials, Equipment, Overhead, Profit, Contingency. Use realistic Bangladesh market rates for the sector. Show line items with estimated amounts in BDT Crore.]
+
+PRICE STRATEGY:
+[2-3 sentences advising how to price: competitive positioning, risk of abnormally low bid under PPR 2008, recommended approach.]
+
+COMPLIANCE ASSESSMENT:
+Total Requirements: [integer]
+Fully Met: [integer]
+Partially Met: [integer]
+Missing: [integer]
+COMPLIANCE SCORE: [integer 0-100]
+
+Missing Requirements:
+- [specific item not in KB or known to be missing]
+- [item 2 if any, else "None identified"]
+
+RISK ASSESSMENT:
+Technical Risk: [HIGH/MEDIUM/LOW] — [one-line reason]
+Financial Risk: [HIGH/MEDIUM/LOW] — [one-line reason]
+Legal Risk: [HIGH/MEDIUM/LOW] — [one-line reason]
+Operational Risk: [HIGH/MEDIUM/LOW] — [one-line reason]
+Market Risk: [HIGH/MEDIUM/LOW] — [one-line reason]
+
+RECOMMENDED ACTIONS:
+- [Specific action 1 — what to do before bidding]
+- [Action 2]
+- [Action 3]
+- [Action 4]
+- [Action 5]
+
+EXECUTIVE BRIEF:
+[2-3 paragraphs for the company director. Should we pursue this tender? What is the strategic importance? What must be done in the next 7 days? What is the expected outcome if submitted?]
+"""
+
+
+def stream_bid_strategy(tender_analysis: dict, company_kb: dict, language: str = "english"):
+    """Stream AI bid strategy analysis from Gemini."""
+    prompt = _build_bid_strategy_prompt(tender_analysis, company_kb, language)
+    genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+    model = genai.GenerativeModel("gemini-2.5-flash")
+    for chunk in model.generate_content(prompt, stream=True):
+        if getattr(chunk, "text", None):
+            yield chunk.text
+
+
+def stream_personalized_proposal(
+    tender_analysis: dict,
+    company_kb: dict,
+    wizard_data: dict,
+    language: str = "english",
+):
+    """Stream a complete personalized proposal from Gemini."""
+    prompt = _build_proposal_prompt(tender_analysis, company_kb, wizard_data, language)
+    genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+    model = genai.GenerativeModel("gemini-2.5-flash")
+    for chunk in model.generate_content(prompt, stream=True):
+        if getattr(chunk, "text", None):
+            yield chunk.text
+
+
+# ---------------------------------------------------------------------------
+# AI Document Validator
+# ---------------------------------------------------------------------------
+
+_DOC_VALIDATOR_PROMPT = """You are an AI Document Validator for Bangladesh procurement and business compliance.
+
+Analyze the provided document (image or text) and extract the following information.
+
+OUTPUT FORMAT (machine-parsed — use exact labels, one per line):
+DOCUMENT_TYPE: [Trade License / TIN Certificate / BIN/VAT Certificate / ISO Certificate / Bank Solvency / Work Experience Certificate / Performance Security / Bank Guarantee / NID / Passport / Other]
+DOCUMENT_NUMBER: [extracted number, or "Not found"]
+ISSUING_AUTHORITY: [e.g., Dhaka North City Corporation, NBR Bangladesh, ISO body name, or "Not found"]
+HOLDER_NAME: [name of company or person on document, or "Not found"]
+ISSUE_DATE: [YYYY-MM-DD, or "Not found"]
+EXPIRY_DATE: [YYYY-MM-DD, or "No expiry" if it does not expire, or "Not found"]
+STATUS: [VALID / EXPIRING_SOON / EXPIRED / CANNOT_DETERMINE]
+VALIDITY_NOTES: [brief note on validity — e.g., "Expires in 45 days", "Already expired", "Valid with no expiry"]
+WARNINGS:
+- [any concern — e.g., wrong company name, missing stamp, signature absent, etc.]
+- [or "None" if no warnings]
+"""
+
+
+def validate_document(file_bytes: bytes, mime_type: str, filename: str) -> dict:
+    """Use Gemini to extract and validate a business document."""
+    genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+    model = genai.GenerativeModel("gemini-2.5-flash")
+
+    # For images: pass directly. For PDFs: extract text first.
+    if mime_type in ("image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"):
+        content = [
+            {"mime_type": mime_type, "data": file_bytes},
+            _DOC_VALIDATOR_PROMPT,
+        ]
+    else:
+        # For PDF/text files, extract text using PyMuPDF
+        try:
+            import fitz  # PyMuPDF
+            doc = fitz.open(stream=BytesIO(file_bytes), filetype="pdf")
+            text = "\n".join(page.get_text() for page in doc)[:6000]
+        except Exception:
+            text = file_bytes.decode("utf-8", errors="ignore")[:6000]
+        content = [f"{_DOC_VALIDATOR_PROMPT}\n\nDOCUMENT TEXT:\n{text}"]
+
+    response = model.generate_content(content)
+    raw = response.text if hasattr(response, "text") else ""
+
+    def get(pattern: str) -> str:
+        m = re.search(pattern, raw, re.IGNORECASE)
+        return m.group(1).strip() if m else "Not found"
+
+    warnings = []
+    in_warnings = False
+    for line in raw.split("\n"):
+        if line.strip().startswith("WARNINGS:"):
+            in_warnings = True
+            continue
+        if in_warnings:
+            clean = line.strip().lstrip("-•* ").strip()
+            if clean and clean.lower() != "none" and not re.match(r"^[A-Z_]+:", clean):
+                warnings.append(clean)
+
+    return {
+        "document_type":    get(r"DOCUMENT_TYPE:\s*(.+)"),
+        "document_number":  get(r"DOCUMENT_NUMBER:\s*(.+)"),
+        "issuing_authority": get(r"ISSUING_AUTHORITY:\s*(.+)"),
+        "holder_name":      get(r"HOLDER_NAME:\s*(.+)"),
+        "issue_date":       get(r"ISSUE_DATE:\s*(.+)"),
+        "expiry_date":      get(r"EXPIRY_DATE:\s*(.+)"),
+        "status":           get(r"STATUS:\s*(VALID|EXPIRING_SOON|EXPIRED|CANNOT_DETERMINE)"),
+        "validity_notes":   get(r"VALIDITY_NOTES:\s*(.+)"),
+        "warnings":         warnings,
+        "filename":         filename,
+    }

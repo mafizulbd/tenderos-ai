@@ -5,13 +5,14 @@
     "start": "next start -H 0.0.0.0"
   },
   "dependencies": {
+    "lucide-react": "^1.21.0",
     "next": "latest",
     "react": "latest",
     "react-dom": "latest"
   },
   "devDependencies": {
-    "typescript": "latest",
+    "@types/node": "latest",
     "@types/react": "latest",
-    "@types/node": "latest"
+    "typescript": "latest"
   }
 }
