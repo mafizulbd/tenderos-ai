@@ -83,6 +83,7 @@ class Tender(Base):
     bid_status = Column(String(50), default="reviewing")  # reviewing/submitted/won/lost/no-bid
     bid_score = Column(Integer, nullable=True)             # 0-100, AI-generated
     notes = Column(Text, default="")
+    approval_status = Column(String(20), default="none")   # none/pending/approved/rejected — denormalized cache
 
     # AI analysis sections
     original_text = Column(Text)
@@ -99,6 +100,20 @@ class Tender(Base):
     bid_strategy = Column(Text)             # AI bid strategy + compliance + risk heatmap
 
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ApprovalRequest(Base):
+    __tablename__ = "approval_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    tender_id = Column(Integer, ForeignKey("tenders.id"), nullable=False, index=True)
+    requested_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    status = Column(String(20), nullable=False, default="pending")  # pending/approved/rejected/cancelled
+    reviewer_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    reviewer_note = Column(Text, default="")
+    requested_at = Column(DateTime, default=datetime.utcnow)
+    reviewed_at = Column(DateTime, nullable=True)
 
 
 class DiscoveredTender(Base):

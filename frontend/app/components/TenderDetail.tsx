@@ -7,7 +7,8 @@ import { formatBytes, formatDate } from "../utils";
 import { Section } from "./Section";
 import { ProposalWizard } from "./ProposalWizard";
 import { BidStrategyPanel } from "./BidStrategyPanel";
-import type { TenderDetail as TDetail } from "../types";
+import { ApprovalPanel } from "./ApprovalPanel";
+import type { Organization, TenderDetail as TDetail } from "../types";
 
 const BID_STATUSES = [
   { value: "reviewing",  label: "Reviewing" },
@@ -20,6 +21,7 @@ const BID_STATUSES = [
 type Props = {
   tender: TDetail;
   token: string;
+  organization: Organization | null;
   onUpdated: (tender: TDetail) => void;
   onTendersChanged: () => void;
 };
@@ -43,7 +45,7 @@ function extractDecision(text: string | null): string | null {
   return m ? m[1].trim() : null;
 }
 
-export function TenderDetail({ tender, token, onUpdated, onTendersChanged }: Props) {
+export function TenderDetail({ tender, token, organization, onUpdated, onTendersChanged }: Props) {
   const [reanalyzing, setReanalyzing] = useState(false);
   const [downloadingDocx, setDownloadingDocx] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
@@ -255,6 +257,13 @@ export function TenderDetail({ tender, token, onUpdated, onTendersChanged }: Pro
           />
         </label>
       </section>
+
+      <ApprovalPanel
+        tender={tender}
+        token={token}
+        organization={organization}
+        onUpdated={onUpdated}
+      />
 
       <BidStrategyPanel
         tender={{ ...tender, bid_strategy: localStrategy }}

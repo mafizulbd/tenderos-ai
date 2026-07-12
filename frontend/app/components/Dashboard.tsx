@@ -148,6 +148,7 @@ export function Dashboard({
               <TenderDetail
                 tender={selectedTender}
                 token={token}
+                organization={organization}
                 onUpdated={handleTenderUpdated}
                 onTendersChanged={loadTenders}
               />

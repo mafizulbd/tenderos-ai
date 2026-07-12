@@ -107,6 +107,19 @@ export const EMPTY_KB: KnowledgeBase = {
   certifications: [],
 };
 
+export type ApprovalStatus = "none" | "pending" | "approved" | "rejected";
+
+export type ApprovalRequest = {
+  id: number;
+  tender_id: number;
+  requested_by_user_id: number;
+  status: "pending" | "approved" | "rejected" | "cancelled";
+  reviewer_user_id: number | null;
+  reviewer_note: string;
+  requested_at: string;
+  reviewed_at: string | null;
+};
+
 export type TenderSummary = {
   id: number;
   title: string;
@@ -117,6 +130,7 @@ export type TenderSummary = {
   deadline: string | null;
   bid_status: string;
   bid_score: number | null;
+  approval_status: ApprovalStatus;
   created_at: string;
   summary: string;
 };

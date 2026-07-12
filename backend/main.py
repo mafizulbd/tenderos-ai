@@ -20,7 +20,7 @@ from sqlalchemy import inspect, or_, text
 from sqlalchemy.orm import Session
 
 from database import Base, engine, SessionLocal
-from models import Tender, User, DiscoveredTender, Organization, OrgMembership, OrgInvite
+from models import Tender, User, DiscoveredTender, Organization, OrgMembership, OrgInvite, ApprovalRequest
 from hermes_client import (
     analyze_with_gemini, parse_gemini_response, stream_with_gemini,
     stream_personalized_proposal, stream_bid_strategy, validate_document,
@@ -95,6 +95,9 @@ def ensure_schema():
     if not inspector.has_table("org_invites"):
         Base.metadata.tables["org_invites"].create(bind=engine)
 
+    if not inspector.has_table("approval_requests"):
+        Base.metadata.tables["approval_requests"].create(bind=engine)
+
     if inspector.has_table("tenders"):
         existing = {c["name"] for c in inspector.get_columns("tenders")}
         tender_cols = {
@@ -108,6 +111,7 @@ def ensure_schema():
             "bid_status":            "VARCHAR(50) DEFAULT 'reviewing'",
             "bid_score":             "INTEGER",
             "notes":                 "TEXT DEFAULT ''",
+            "approval_status":       "VARCHAR(20) DEFAULT 'none'",
             "financial_requirements":  "TEXT",
             "bid_recommendation":     "TEXT",
             "personalized_proposal":  "TEXT",
@@ -189,6 +193,11 @@ class InviteCreate(BaseModel):
 
 class MemberRoleUpdate(BaseModel):
     role: str
+
+
+class ApprovalDecision(BaseModel):
+    decision: str
+    note: str = ""
 
 
 class ReanalyzeRequest(BaseModel):
@@ -416,6 +425,7 @@ def get_tender_response(tender: Tender) -> dict:
         "bid_status": tender.bid_status or "reviewing",
         "bid_score": tender.bid_score,
         "notes": tender.notes or "",
+        "approval_status": tender.approval_status or "none",
         "summary": tender.summary,
         "eligibility": tender.eligibility,
         "financial_requirements": tender.financial_requirements,
@@ -840,6 +850,7 @@ def list_tenders(
             "deadline": t.deadline,
             "bid_status": t.bid_status or "reviewing",
             "bid_score": t.bid_score,
+            "approval_status": t.approval_status or "none",
             "created_at": t.created_at,
             "summary": (t.summary or "")[:180],
         }
@@ -1285,6 +1296,158 @@ def export_pdf(
         media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename=tender_{tender.id}_report.pdf"},
     )
+
+
+# ---------------------------------------------------------------------------
+# Approval Workflow
+# ---------------------------------------------------------------------------
+
+VALID_APPROVAL_DECISIONS = {"approved", "rejected"}
+
+
+def _approval_response(a: ApprovalRequest) -> dict:
+    return {
+        "id": a.id,
+        "tender_id": a.tender_id,
+        "requested_by_user_id": a.requested_by_user_id,
+        "status": a.status,
+        "reviewer_user_id": a.reviewer_user_id,
+        "reviewer_note": a.reviewer_note or "",
+        "requested_at": a.requested_at,
+        "reviewed_at": a.reviewed_at,
+    }
+
+
+def _get_org_tender(tender_id: int, membership: OrgMembership, db: Session) -> Tender:
+    tender = db.query(Tender).filter(
+        Tender.id == tender_id, Tender.organization_id == membership.organization_id
+    ).first()
+    if not tender:
+        raise HTTPException(status_code=404, detail="Tender not found.")
+    return tender
+
+
+@app.post("/tenders/{tender_id}/approval/request")
+def request_approval(
+    tender_id: int,
+    db: Session = Depends(get_db),
+    membership: OrgMembership = Depends(get_current_membership),
+):
+    tender = _get_org_tender(tender_id, membership, db)
+    if not _can_modify_tender(tender, membership):
+        raise HTTPException(status_code=403, detail="You can only request approval for tenders you created.")
+    if tender.approval_status == "pending":
+        raise HTTPException(status_code=400, detail="This tender already has a pending approval request.")
+
+    approval = ApprovalRequest(
+        organization_id=membership.organization_id,
+        tender_id=tender.id,
+        requested_by_user_id=membership.user_id,
+        status="pending",
+    )
+    db.add(approval)
+    tender.approval_status = "pending"
+    db.commit()
+    db.refresh(approval)
+    return _approval_response(approval)
+
+
+@app.post("/tenders/{tender_id}/approval/cancel")
+def cancel_approval(
+    tender_id: int,
+    db: Session = Depends(get_db),
+    membership: OrgMembership = Depends(get_current_membership),
+):
+    tender = _get_org_tender(tender_id, membership, db)
+    if not _can_modify_tender(tender, membership):
+        raise HTTPException(status_code=403, detail="You can only cancel approval requests for tenders you created.")
+
+    pending = (
+        db.query(ApprovalRequest)
+        .filter(ApprovalRequest.tender_id == tender.id, ApprovalRequest.status == "pending")
+        .order_by(ApprovalRequest.id.desc())
+        .first()
+    )
+    if not pending:
+        raise HTTPException(status_code=400, detail="This tender has no pending approval request.")
+
+    pending.status = "cancelled"
+    pending.reviewed_at = datetime.utcnow()
+    tender.approval_status = "none"
+    db.commit()
+    return {"detail": "Approval request cancelled."}
+
+
+@app.post("/tenders/{tender_id}/approval/decide")
+def decide_approval(
+    tender_id: int,
+    payload: ApprovalDecision,
+    db: Session = Depends(get_db),
+    membership: OrgMembership = Depends(require_role("owner", "admin")),
+):
+    if payload.decision not in VALID_APPROVAL_DECISIONS:
+        raise HTTPException(status_code=400, detail=f"Invalid decision. Must be one of: {', '.join(sorted(VALID_APPROVAL_DECISIONS))}")
+
+    tender = _get_org_tender(tender_id, membership, db)
+    pending = (
+        db.query(ApprovalRequest)
+        .filter(ApprovalRequest.tender_id == tender.id, ApprovalRequest.status == "pending")
+        .order_by(ApprovalRequest.id.desc())
+        .first()
+    )
+    if not pending:
+        raise HTTPException(status_code=400, detail="This tender has no pending approval request.")
+
+    pending.status = payload.decision
+    pending.reviewer_user_id = membership.user_id
+    pending.reviewer_note = payload.note.strip()
+    pending.reviewed_at = datetime.utcnow()
+    tender.approval_status = payload.decision
+    db.commit()
+    return _approval_response(pending)
+
+
+@app.get("/tenders/{tender_id}/approval/history")
+def get_approval_history(
+    tender_id: int,
+    db: Session = Depends(get_db),
+    membership: OrgMembership = Depends(get_current_membership),
+):
+    tender = _get_org_tender(tender_id, membership, db)
+    history = (
+        db.query(ApprovalRequest)
+        .filter(ApprovalRequest.tender_id == tender.id)
+        .order_by(ApprovalRequest.id.desc())
+        .all()
+    )
+    return [_approval_response(a) for a in history]
+
+
+@app.get("/approvals/pending")
+def list_pending_approvals(
+    db: Session = Depends(get_db),
+    membership: OrgMembership = Depends(require_role("owner", "admin")),
+):
+    pending = (
+        db.query(ApprovalRequest)
+        .filter(
+            ApprovalRequest.organization_id == membership.organization_id,
+            ApprovalRequest.status == "pending",
+        )
+        .order_by(ApprovalRequest.id.asc())
+        .all()
+    )
+    tenders = {
+        t.id: t
+        for t in db.query(Tender).filter(Tender.id.in_([a.tender_id for a in pending])).all()
+    }
+    return [
+        {
+            **_approval_response(a),
+            "tender_title": tenders[a.tender_id].title if a.tender_id in tenders else "",
+        }
+        for a in pending
+    ]
 
 
 # ---------------------------------------------------------------------------
