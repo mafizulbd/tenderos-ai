@@ -8,6 +8,8 @@ import { Section } from "./Section";
 import { ProposalWizard } from "./ProposalWizard";
 import { BidStrategyPanel } from "./BidStrategyPanel";
 import { ApprovalPanel } from "./ApprovalPanel";
+import { CommentsPanel } from "./CommentsPanel";
+import { TasksPanel } from "./TasksPanel";
 import type { Organization, TenderDetail as TDetail } from "../types";
 
 const BID_STATUSES = [
@@ -22,6 +24,7 @@ type Props = {
   tender: TDetail;
   token: string;
   organization: Organization | null;
+  currentUserId: number;
   onUpdated: (tender: TDetail) => void;
   onTendersChanged: () => void;
 };
@@ -45,7 +48,7 @@ function extractDecision(text: string | null): string | null {
   return m ? m[1].trim() : null;
 }
 
-export function TenderDetail({ tender, token, organization, onUpdated, onTendersChanged }: Props) {
+export function TenderDetail({ tender, token, organization, currentUserId, onUpdated, onTendersChanged }: Props) {
   const [reanalyzing, setReanalyzing] = useState(false);
   const [downloadingDocx, setDownloadingDocx] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
@@ -263,6 +266,21 @@ export function TenderDetail({ tender, token, organization, onUpdated, onTenders
         token={token}
         organization={organization}
         onUpdated={onUpdated}
+      />
+
+      <TasksPanel
+        entityType="tender"
+        entityId={tender.id}
+        token={token}
+        currentUserId={currentUserId}
+      />
+
+      <CommentsPanel
+        entityType="tender"
+        entityId={tender.id}
+        token={token}
+        currentUserId={currentUserId}
+        organization={organization}
       />
 
       <BidStrategyPanel

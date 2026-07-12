@@ -120,6 +120,35 @@ export type ApprovalRequest = {
   reviewed_at: string | null;
 };
 
+export type Comment = {
+  id: number;
+  entity_type: string;
+  entity_id: number;
+  author_user_id: number;
+  author_email: string;
+  body: string;
+  created_at: string;
+  updated_at: string | null;
+};
+
+export type TaskStatus = "open" | "in_progress" | "done" | "cancelled";
+
+export type Task = {
+  id: number;
+  entity_type: string | null;
+  entity_id: number | null;
+  title: string;
+  description: string;
+  assignee_user_id: number | null;
+  assignee_email: string;
+  created_by_user_id: number;
+  created_by_email: string;
+  status: TaskStatus;
+  due_date: string | null;
+  created_at: string;
+  updated_at: string | null;
+};
+
 export type TenderSummary = {
   id: number;
   title: string;

@@ -116,6 +116,36 @@ class ApprovalRequest(Base):
     reviewed_at = Column(DateTime, nullable=True)
 
 
+class Comment(Base):
+    __tablename__ = "comments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    entity_type = Column(String(20), nullable=False, index=True)   # tender / vendor / contract
+    entity_id = Column(Integer, nullable=False, index=True)
+    author_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    body = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=True)
+
+
+class Task(Base):
+    __tablename__ = "tasks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    entity_type = Column(String(20), nullable=True, index=True)    # null = standalone/org-level task
+    entity_id = Column(Integer, nullable=True, index=True)
+    title = Column(String(255), nullable=False)
+    description = Column(Text, default="")
+    assignee_user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    status = Column(String(20), nullable=False, default="open")    # open/in_progress/done/cancelled
+    due_date = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=True)
+
+
 class DiscoveredTender(Base):
     """Global pool of tenders discovered from external sources."""
     __tablename__ = "discovered_tenders"

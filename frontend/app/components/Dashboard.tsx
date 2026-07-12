@@ -149,6 +149,7 @@ export function Dashboard({
                 tender={selectedTender}
                 token={token}
                 organization={organization}
+                currentUserId={user.id}
                 onUpdated={handleTenderUpdated}
                 onTendersChanged={loadTenders}
               />
