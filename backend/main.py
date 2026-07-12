@@ -20,7 +20,7 @@ from sqlalchemy import inspect, or_, text
 from sqlalchemy.orm import Session
 
 from database import Base, engine, SessionLocal
-from models import Tender, User, DiscoveredTender
+from models import Tender, User, DiscoveredTender, Organization, OrgMembership, OrgInvite
 from hermes_client import (
     analyze_with_gemini, parse_gemini_response, stream_with_gemini,
     stream_personalized_proposal, stream_bid_strategy, validate_document,
@@ -86,10 +86,20 @@ def ensure_schema():
     if not inspector.has_table("discovered_tenders"):
         Base.metadata.tables["discovered_tenders"].create(bind=engine)
 
+    if not inspector.has_table("organizations"):
+        Base.metadata.tables["organizations"].create(bind=engine)
+
+    if not inspector.has_table("org_memberships"):
+        Base.metadata.tables["org_memberships"].create(bind=engine)
+
+    if not inspector.has_table("org_invites"):
+        Base.metadata.tables["org_invites"].create(bind=engine)
+
     if inspector.has_table("tenders"):
         existing = {c["name"] for c in inspector.get_columns("tenders")}
         tender_cols = {
             "user_id":               "INTEGER",
+            "organization_id":       "INTEGER",
             "status":                "VARCHAR(50) DEFAULT 'completed'",
             "file_name":             "VARCHAR(255) DEFAULT ''",
             "file_type":             "VARCHAR(100) DEFAULT ''",
@@ -108,6 +118,48 @@ def ensure_schema():
                 if col not in existing:
                     conn.execute(text(f"ALTER TABLE tenders ADD COLUMN {col} {defn}"))
 
+    _backfill_organizations()
+
+
+def _backfill_organizations() -> None:
+    """Give every user a personal Organization (idempotent, safe on every startup).
+
+    New signups create their own org directly in the /auth/signup handler; this
+    only exists to migrate users created before Organizations existed.
+    """
+    db = SessionLocal()
+    try:
+        for user in db.query(User).all():
+            membership = (
+                db.query(OrgMembership)
+                .filter(OrgMembership.user_id == user.id)
+                .order_by(OrgMembership.id.asc())
+                .first()
+            )
+            if membership is None:
+                org = Organization(
+                    name=user.organization_name or f"{user.email}'s Organization",
+                    plan=user.plan or "free",
+                    monthly_tenders_used=user.monthly_tenders_used or 0,
+                    monthly_reset_at=user.monthly_reset_at,
+                )
+                db.add(org)
+                db.flush()
+                db.add(OrgMembership(organization_id=org.id, user_id=user.id, role="owner"))
+                db.commit()
+                org_id = org.id
+            else:
+                org_id = membership.organization_id
+
+            # Unconditional — cheap no-op once every tender has organization_id set,
+            # and safe to re-run if a previous startup was interrupted mid-backfill.
+            db.query(Tender).filter(
+                Tender.user_id == user.id, Tender.organization_id.is_(None)
+            ).update({"organization_id": org_id})
+            db.commit()
+    finally:
+        db.close()
+
 
 ensure_schema()
 
@@ -121,10 +173,22 @@ class AuthRequest(BaseModel):
 
 
 class ProfileUpdate(BaseModel):
-    organization_name: str = ""
     contact_name: str = ""
     phone: str = ""
     address: str = ""
+
+
+class OrgUpdate(BaseModel):
+    name: str
+
+
+class InviteCreate(BaseModel):
+    email: str
+    role: str = "member"
+
+
+class MemberRoleUpdate(BaseModel):
+    role: str
 
 
 class ReanalyzeRequest(BaseModel):
@@ -190,17 +254,17 @@ def _token_expiry() -> datetime:
     return datetime.utcnow() + timedelta(days=TOKEN_TTL_DAYS)
 
 
-def auth_response(user: User) -> dict:
+def auth_response(user: User, org: Organization) -> dict:
     return {
         "token": user.api_token,
         "user": {
             "id": user.id,
             "email": user.email,
-            "organization_name": user.organization_name or "",
+            "organization_name": org.name or "",
             "contact_name": user.contact_name or "",
             "phone": user.phone or "",
             "address": user.address or "",
-            "plan": user.plan or "free",
+            "plan": org.plan or "free",
         },
     }
 
@@ -226,23 +290,75 @@ def get_current_user(
     return user
 
 
-def _reset_monthly_if_needed(user: User, db: Session) -> None:
+def _get_org(organization_id: int, db: Session) -> Organization:
+    org = db.query(Organization).filter(Organization.id == organization_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organization not found.")
+    return org
+
+
+def _get_user_org(user: User, db: Session) -> Organization:
+    # Most-recently-joined membership wins by default (see get_current_membership).
+    membership = (
+        db.query(OrgMembership)
+        .filter(OrgMembership.user_id == user.id, OrgMembership.status == "active")
+        .order_by(OrgMembership.id.desc())
+        .first()
+    )
+    if not membership:
+        raise HTTPException(status_code=500, detail="User has no organization membership.")
+    return _get_org(membership.organization_id, db)
+
+
+def get_current_membership(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    x_org_id: int | None = Header(default=None, alias="X-Org-Id"),
+) -> OrgMembership:
+    query = db.query(OrgMembership).filter(
+        OrgMembership.user_id == current_user.id,
+        OrgMembership.status == "active",
+    )
+    if x_org_id is not None:
+        query = query.filter(OrgMembership.organization_id == x_org_id)
+    # Every signup auto-creates a personal org, so an invited user ends up with
+    # >1 membership; default to the most recently joined one (e.g. the team
+    # they just accepted an invite into) until a frontend org-switcher exists.
+    membership = query.order_by(OrgMembership.id.desc()).first()
+    if not membership:
+        raise HTTPException(status_code=403, detail="No active organization membership.")
+    return membership
+
+
+def require_role(*roles: str):
+    def _dep(membership: OrgMembership = Depends(get_current_membership)) -> OrgMembership:
+        if membership.role not in roles:
+            raise HTTPException(status_code=403, detail="You do not have permission to perform this action.")
+        return membership
+    return _dep
+
+
+def _can_modify_tender(tender: Tender, membership: OrgMembership) -> bool:
+    return membership.role in ("owner", "admin") or tender.user_id == membership.user_id
+
+
+def _reset_monthly_if_needed(org: Organization, db: Session) -> None:
     now = datetime.utcnow()
     if (
-        user.monthly_reset_at is None
-        or user.monthly_reset_at.month != now.month
-        or user.monthly_reset_at.year != now.year
+        org.monthly_reset_at is None
+        or org.monthly_reset_at.month != now.month
+        or org.monthly_reset_at.year != now.year
     ):
-        user.monthly_tenders_used = 0
-        user.monthly_reset_at = now
+        org.monthly_tenders_used = 0
+        org.monthly_reset_at = now
         db.commit()
 
 
-def check_usage_limit(user: User, db: Session) -> None:
-    _reset_monthly_if_needed(user, db)
-    plan = user.plan or "free"
+def check_usage_limit(org: Organization, db: Session) -> None:
+    _reset_monthly_if_needed(org, db)
+    plan = org.plan or "free"
     limit = PLAN_LIMITS.get(plan, 5)
-    if limit != -1 and (user.monthly_tenders_used or 0) >= limit:
+    if limit != -1 and (org.monthly_tenders_used or 0) >= limit:
         raise HTTPException(
             status_code=402,
             detail=(
@@ -252,8 +368,8 @@ def check_usage_limit(user: User, db: Session) -> None:
         )
 
 
-def increment_usage(user: User, db: Session) -> None:
-    user.monthly_tenders_used = (user.monthly_tenders_used or 0) + 1
+def increment_usage(org: Organization, db: Session) -> None:
+    org.monthly_tenders_used = (org.monthly_tenders_used or 0) + 1
     db.commit()
 
 
@@ -315,9 +431,9 @@ def get_tender_response(tender: Tender) -> dict:
     }
 
 
-def _company_profile(user: User) -> dict:
+def _company_profile(user: User, org: Organization) -> dict:
     return {
-        "organization_name": user.organization_name,
+        "organization_name": org.name,
         "contact_name": user.contact_name,
         "email": user.email,
         "phone": user.phone,
@@ -369,9 +485,15 @@ def signup(request: Request, payload: AuthRequest, db: Session = Depends(get_db)
         monthly_tenders_used=0,
     )
     db.add(user)
+    db.flush()
+
+    org = Organization(name=f"{email}'s Organization", plan="free", monthly_tenders_used=0)
+    db.add(org)
+    db.flush()
+    db.add(OrgMembership(organization_id=org.id, user_id=user.id, role="owner"))
     db.commit()
     db.refresh(user)
-    return auth_response(user)
+    return auth_response(user, org)
 
 
 @app.post("/auth/login")
@@ -387,12 +509,12 @@ def login(request: Request, payload: AuthRequest, db: Session = Depends(get_db))
     user.token_expires_at = _token_expiry()
     db.commit()
     db.refresh(user)
-    return auth_response(user)
+    return auth_response(user, _get_user_org(user, db))
 
 
 @app.get("/me")
-def get_me(current_user: User = Depends(get_current_user)):
-    return auth_response(current_user)["user"]
+def get_me(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return auth_response(current_user, _get_user_org(current_user, db))["user"]
 
 
 @app.put("/me/profile")
@@ -401,13 +523,12 @@ def update_profile(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    current_user.organization_name = payload.organization_name.strip()
     current_user.contact_name = payload.contact_name.strip()
     current_user.phone = payload.phone.strip()
     current_user.address = payload.address.strip()
     db.commit()
     db.refresh(current_user)
-    return auth_response(current_user)["user"]
+    return auth_response(current_user, _get_user_org(current_user, db))["user"]
 
 
 @app.get("/me/knowledge-base")
@@ -426,20 +547,265 @@ def update_knowledge_base(
     return {"detail": "Knowledge base updated.", "knowledge_base": payload.knowledge_base}
 
 # ---------------------------------------------------------------------------
+# Organizations / Teams
+# ---------------------------------------------------------------------------
+
+VALID_ROLES = {"owner", "admin", "member"}
+
+
+def _member_response(membership: OrgMembership, user: User | None) -> dict:
+    return {
+        "user_id": membership.user_id,
+        "email": user.email if user else "",
+        "contact_name": user.contact_name if user else "",
+        "role": membership.role,
+        "joined_at": membership.created_at,
+    }
+
+
+@app.get("/orgs/me")
+def get_my_org(
+    db: Session = Depends(get_db),
+    membership: OrgMembership = Depends(get_current_membership),
+):
+    org = _get_org(membership.organization_id, db)
+    return {"id": org.id, "name": org.name, "plan": org.plan or "free", "role": membership.role}
+
+
+@app.put("/orgs/me")
+def update_my_org(
+    payload: OrgUpdate,
+    db: Session = Depends(get_db),
+    membership: OrgMembership = Depends(require_role("owner")),
+):
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Organization name is required.")
+    org = _get_org(membership.organization_id, db)
+    org.name = name
+    db.commit()
+    return {"id": org.id, "name": org.name, "plan": org.plan or "free", "role": membership.role}
+
+
+@app.get("/orgs/me/members")
+def list_members(
+    db: Session = Depends(get_db),
+    membership: OrgMembership = Depends(get_current_membership),
+):
+    memberships = (
+        db.query(OrgMembership)
+        .filter(
+            OrgMembership.organization_id == membership.organization_id,
+            OrgMembership.status == "active",
+        )
+        .order_by(OrgMembership.id.asc())
+        .all()
+    )
+    users = {
+        u.id: u
+        for u in db.query(User).filter(User.id.in_([m.user_id for m in memberships])).all()
+    }
+    return [_member_response(m, users.get(m.user_id)) for m in memberships]
+
+
+def _active_owner_count(organization_id: int, db: Session) -> int:
+    return (
+        db.query(OrgMembership)
+        .filter(
+            OrgMembership.organization_id == organization_id,
+            OrgMembership.role == "owner",
+            OrgMembership.status == "active",
+        )
+        .count()
+    )
+
+
+@app.patch("/orgs/me/members/{user_id}")
+def update_member_role(
+    user_id: int,
+    payload: MemberRoleUpdate,
+    db: Session = Depends(get_db),
+    membership: OrgMembership = Depends(require_role("owner")),
+):
+    if payload.role not in VALID_ROLES:
+        raise HTTPException(status_code=400, detail=f"Invalid role. Must be one of: {', '.join(sorted(VALID_ROLES))}")
+
+    target = db.query(OrgMembership).filter(
+        OrgMembership.organization_id == membership.organization_id,
+        OrgMembership.user_id == user_id,
+        OrgMembership.status == "active",
+    ).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="Member not found.")
+
+    if target.role == "owner" and payload.role != "owner" and _active_owner_count(membership.organization_id, db) <= 1:
+        raise HTTPException(status_code=400, detail="Cannot demote the sole remaining owner.")
+
+    target.role = payload.role
+    db.commit()
+    return _member_response(target, db.query(User).filter(User.id == user_id).first())
+
+
+@app.delete("/orgs/me/members/{user_id}")
+def remove_member(
+    user_id: int,
+    db: Session = Depends(get_db),
+    membership: OrgMembership = Depends(require_role("owner", "admin")),
+):
+    if user_id == membership.user_id:
+        raise HTTPException(status_code=400, detail="You cannot remove yourself from the organization.")
+
+    target = db.query(OrgMembership).filter(
+        OrgMembership.organization_id == membership.organization_id,
+        OrgMembership.user_id == user_id,
+        OrgMembership.status == "active",
+    ).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="Member not found.")
+
+    if target.role == "owner" and _active_owner_count(membership.organization_id, db) <= 1:
+        raise HTTPException(status_code=400, detail="Cannot remove the sole remaining owner.")
+    if membership.role == "admin" and target.role in ("owner", "admin"):
+        raise HTTPException(status_code=403, detail="Admins cannot remove owners or other admins.")
+
+    target.status = "removed"
+    db.commit()
+    return {"detail": "Member removed."}
+
+
+@app.post("/orgs/me/invites")
+@limiter.limit("10/minute")
+def create_invite(
+    request: Request,
+    payload: InviteCreate,
+    db: Session = Depends(get_db),
+    membership: OrgMembership = Depends(require_role("owner", "admin")),
+):
+    if payload.role not in VALID_ROLES:
+        raise HTTPException(status_code=400, detail=f"Invalid role. Must be one of: {', '.join(sorted(VALID_ROLES))}")
+    email = normalize_email(payload.email)
+
+    already_member = (
+        db.query(OrgMembership)
+        .join(User, User.id == OrgMembership.user_id)
+        .filter(
+            OrgMembership.organization_id == membership.organization_id,
+            OrgMembership.status == "active",
+            User.email == email,
+        )
+        .first()
+    )
+    if already_member:
+        raise HTTPException(status_code=409, detail="This person is already a member of your organization.")
+
+    invite = OrgInvite(
+        organization_id=membership.organization_id,
+        email=email,
+        role=payload.role,
+        token=secrets.token_urlsafe(24),
+        invited_by_user_id=membership.user_id,
+        status="pending",
+        expires_at=datetime.utcnow() + timedelta(days=7),
+    )
+    db.add(invite)
+    db.commit()
+    db.refresh(invite)
+    return {
+        "id": invite.id, "email": invite.email, "role": invite.role, "token": invite.token,
+        "status": invite.status, "expires_at": invite.expires_at, "created_at": invite.created_at,
+    }
+
+
+@app.get("/orgs/me/invites")
+def list_invites(
+    db: Session = Depends(get_db),
+    membership: OrgMembership = Depends(require_role("owner", "admin")),
+):
+    invites = (
+        db.query(OrgInvite)
+        .filter(OrgInvite.organization_id == membership.organization_id, OrgInvite.status == "pending")
+        .order_by(OrgInvite.id.desc())
+        .all()
+    )
+    return [
+        {
+            "id": i.id, "email": i.email, "role": i.role, "token": i.token,
+            "status": i.status, "expires_at": i.expires_at, "created_at": i.created_at,
+        }
+        for i in invites
+    ]
+
+
+@app.delete("/orgs/me/invites/{invite_id}")
+def revoke_invite(
+    invite_id: int,
+    db: Session = Depends(get_db),
+    membership: OrgMembership = Depends(require_role("owner", "admin")),
+):
+    invite = db.query(OrgInvite).filter(
+        OrgInvite.id == invite_id, OrgInvite.organization_id == membership.organization_id
+    ).first()
+    if not invite:
+        raise HTTPException(status_code=404, detail="Invite not found.")
+    invite.status = "revoked"
+    db.commit()
+    return {"detail": "Invite revoked."}
+
+
+@app.post("/invites/{token}/accept")
+def accept_invite(
+    token: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    invite = db.query(OrgInvite).filter(OrgInvite.token == token).first()
+    if not invite:
+        raise HTTPException(status_code=404, detail="Invite not found.")
+    if invite.status != "pending":
+        raise HTTPException(status_code=400, detail="This invite is no longer valid.")
+    if invite.expires_at and invite.expires_at < datetime.utcnow():
+        invite.status = "expired"
+        db.commit()
+        raise HTTPException(status_code=400, detail="This invite has expired.")
+    if invite.email != current_user.email:
+        raise HTTPException(status_code=403, detail="This invite was sent to a different email address.")
+
+    existing = db.query(OrgMembership).filter(
+        OrgMembership.organization_id == invite.organization_id,
+        OrgMembership.user_id == current_user.id,
+    ).first()
+    if existing:
+        existing.status = "active"
+        existing.role = invite.role
+    else:
+        db.add(OrgMembership(
+            organization_id=invite.organization_id,
+            user_id=current_user.id,
+            role=invite.role,
+            status="active",
+        ))
+
+    invite.status = "accepted"
+    db.commit()
+    org = _get_org(invite.organization_id, db)
+    return {"detail": "Invite accepted.", "organization": {"id": org.id, "name": org.name}}
+
+# ---------------------------------------------------------------------------
 # Subscription
 # ---------------------------------------------------------------------------
 
 @app.get("/subscription")
 def get_subscription(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    membership: OrgMembership = Depends(get_current_membership),
 ):
-    _reset_monthly_if_needed(current_user, db)
-    plan = current_user.plan or "free"
+    org = _get_org(membership.organization_id, db)
+    _reset_monthly_if_needed(org, db)
+    plan = org.plan or "free"
     limit = PLAN_LIMITS.get(plan, 5)
     return {
         "plan": plan,
-        "monthly_tenders_used": current_user.monthly_tenders_used or 0,
+        "monthly_tenders_used": org.monthly_tenders_used or 0,
         "monthly_limit": limit,
         "is_unlimited": limit == -1,
     }
@@ -452,9 +818,9 @@ def get_subscription(
 def list_tenders(
     search: str = "",
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    membership: OrgMembership = Depends(get_current_membership),
 ):
-    query = db.query(Tender).filter(Tender.user_id == current_user.id)
+    query = db.query(Tender).filter(Tender.organization_id == membership.organization_id)
 
     if search.strip():
         term = f"%{search.strip()}%"
@@ -485,10 +851,10 @@ def list_tenders(
 def get_tender(
     tender_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    membership: OrgMembership = Depends(get_current_membership),
 ):
     tender = db.query(Tender).filter(
-        Tender.id == tender_id, Tender.user_id == current_user.id
+        Tender.id == tender_id, Tender.organization_id == membership.organization_id
     ).first()
     if not tender:
         raise HTTPException(status_code=404, detail="Tender not found.")
@@ -500,13 +866,15 @@ def update_tender(
     tender_id: int,
     payload: TenderUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    membership: OrgMembership = Depends(get_current_membership),
 ):
     tender = db.query(Tender).filter(
-        Tender.id == tender_id, Tender.user_id == current_user.id
+        Tender.id == tender_id, Tender.organization_id == membership.organization_id
     ).first()
     if not tender:
         raise HTTPException(status_code=404, detail="Tender not found.")
+    if not _can_modify_tender(tender, membership):
+        raise HTTPException(status_code=403, detail="You can only edit tenders you created.")
 
     valid_bid_statuses = {"reviewing", "submitted", "won", "lost", "no-bid"}
     if payload.bid_status is not None:
@@ -535,6 +903,7 @@ async def analyze_tender(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    membership: OrgMembership = Depends(get_current_membership),
 ):
     clean_title = title.strip()
     if not clean_title:
@@ -542,7 +911,8 @@ async def analyze_tender(
     if language not in {"english", "bangla"}:
         raise HTTPException(status_code=400, detail="Unsupported language.")
 
-    check_usage_limit(current_user, db)
+    org = _get_org(membership.organization_id, db)
+    check_usage_limit(org, db)
 
     content = await file.read()
     if len(content) > MAX_UPLOAD_BYTES:
@@ -552,11 +922,12 @@ async def analyze_tender(
     if len(tender_text.strip()) < 20:
         raise HTTPException(status_code=400, detail="Unable to extract readable text from this file.")
 
-    result = analyze_with_gemini(tender_text, language, _company_profile(current_user))
+    result = analyze_with_gemini(tender_text, language, _company_profile(current_user, org))
     bid_score = _extract_bid_score(result.get("bid_recommendation"))
 
     tender = Tender(
         user_id=current_user.id,
+        organization_id=membership.organization_id,
         title=clean_title,
         language=language,
         status="failed" if (result.get("summary") or "").startswith("Gemini API Error:") else "completed",
@@ -579,7 +950,7 @@ async def analyze_tender(
     db.add(tender)
     db.commit()
     db.refresh(tender)
-    increment_usage(current_user, db)
+    increment_usage(org, db)
     return get_tender_response(tender)
 
 
@@ -593,6 +964,7 @@ async def analyze_tender_stream(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    membership: OrgMembership = Depends(get_current_membership),
 ):
     clean_title = title.strip()
     if not clean_title:
@@ -600,7 +972,8 @@ async def analyze_tender_stream(
     if language not in {"english", "bangla"}:
         raise HTTPException(status_code=400, detail="Unsupported language.")
 
-    check_usage_limit(current_user, db)
+    org = _get_org(membership.organization_id, db)
+    check_usage_limit(org, db)
 
     content = await file.read()
     if len(content) > MAX_UPLOAD_BYTES:
@@ -614,7 +987,8 @@ async def analyze_tender_stream(
     file_type = file.content_type or ""
     file_size = len(content)
     user_id = current_user.id
-    profile = _company_profile(current_user)
+    organization_id = membership.organization_id
+    profile = _company_profile(current_user, org)
     parsed_deadline = _parse_deadline(deadline)
 
     async def generate():
@@ -658,6 +1032,7 @@ async def analyze_tender_stream(
 
         tender = Tender(
             user_id=user_id,
+            organization_id=organization_id,
             title=clean_title,
             language=language,
             status=status,
@@ -680,7 +1055,7 @@ async def analyze_tender_stream(
         db.add(tender)
         db.commit()
         db.refresh(tender)
-        increment_usage(current_user, db)
+        increment_usage(org, db)
 
         yield _sse({"type": "done", "tender": get_tender_response(tender)})
 
@@ -699,20 +1074,24 @@ def reanalyze_tender(
     payload: ReanalyzeRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    membership: OrgMembership = Depends(get_current_membership),
 ):
     tender = db.query(Tender).filter(
-        Tender.id == tender_id, Tender.user_id == current_user.id
+        Tender.id == tender_id, Tender.organization_id == membership.organization_id
     ).first()
     if not tender:
         raise HTTPException(status_code=404, detail="Tender not found.")
+    if not _can_modify_tender(tender, membership):
+        raise HTTPException(status_code=403, detail="You can only re-analyze tenders you created.")
     if payload.language not in {"english", "bangla"}:
         raise HTTPException(status_code=400, detail="Unsupported language.")
     if not tender.original_text:
         raise HTTPException(status_code=400, detail="Original document text not available for re-analysis.")
 
-    check_usage_limit(current_user, db)
+    org = _get_org(membership.organization_id, db)
+    check_usage_limit(org, db)
 
-    result = analyze_with_gemini(tender.original_text, payload.language, _company_profile(current_user))
+    result = analyze_with_gemini(tender.original_text, payload.language, _company_profile(current_user, org))
     bid_score = _extract_bid_score(result.get("bid_recommendation"))
 
     tender.language = payload.language
@@ -730,7 +1109,7 @@ def reanalyze_tender(
 
     db.commit()
     db.refresh(tender)
-    increment_usage(current_user, db)
+    increment_usage(org, db)
     return get_tender_response(tender)
 
 
@@ -738,13 +1117,15 @@ def reanalyze_tender(
 def delete_tender(
     tender_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    membership: OrgMembership = Depends(get_current_membership),
 ):
     tender = db.query(Tender).filter(
-        Tender.id == tender_id, Tender.user_id == current_user.id
+        Tender.id == tender_id, Tender.organization_id == membership.organization_id
     ).first()
     if not tender:
         raise HTTPException(status_code=404, detail="Tender not found.")
+    if not _can_modify_tender(tender, membership):
+        raise HTTPException(status_code=403, detail="You can only delete tenders you created.")
     db.delete(tender)
     db.commit()
     return {"detail": "Tender deleted."}
@@ -754,10 +1135,10 @@ def delete_tender(
 def export_docx(
     tender_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    membership: OrgMembership = Depends(get_current_membership),
 ):
     tender = db.query(Tender).filter(
-        Tender.id == tender_id, Tender.user_id == current_user.id
+        Tender.id == tender_id, Tender.organization_id == membership.organization_id
     ).first()
     if not tender:
         raise HTTPException(status_code=404, detail="Tender not found.")
@@ -804,10 +1185,10 @@ def export_docx(
 def export_pdf(
     tender_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    membership: OrgMembership = Depends(get_current_membership),
 ):
     tender = db.query(Tender).filter(
-        Tender.id == tender_id, Tender.user_id == current_user.id
+        Tender.id == tender_id, Tender.organization_id == membership.organization_id
     ).first()
     if not tender:
         raise HTTPException(status_code=404, detail="Tender not found.")
@@ -918,12 +1299,17 @@ async def generate_proposal(
     payload: ProposalWizardRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    membership: OrgMembership = Depends(get_current_membership),
 ):
     tender = db.query(Tender).filter(
-        Tender.id == tender_id, Tender.user_id == current_user.id
+        Tender.id == tender_id, Tender.organization_id == membership.organization_id
     ).first()
     if not tender:
         raise HTTPException(status_code=404, detail="Tender not found.")
+    if not _can_modify_tender(tender, membership):
+        raise HTTPException(status_code=403, detail="You can only generate proposals for tenders you created.")
+
+    org = _get_org(membership.organization_id, db)
 
     # Build tender analysis dict from stored fields
     tender_analysis = {
@@ -938,7 +1324,7 @@ async def generate_proposal(
     # Merge knowledge base with basic profile
     kb = _get_knowledge_base(current_user)
     if not kb.get("company_name"):
-        kb["company_name"] = current_user.organization_name or ""
+        kb["company_name"] = org.name or ""
     if not kb.get("contact_name"):
         kb["contact_name"] = current_user.contact_name or ""
     if not kb.get("phone"):
@@ -948,7 +1334,7 @@ async def generate_proposal(
 
     wizard_data = payload.model_dump()
     tender_id_copy = tender.id
-    user_id = current_user.id
+    organization_id = membership.organization_id
     language = payload.language
 
     async def generate():
@@ -991,7 +1377,7 @@ async def generate_proposal(
         new_db = SessionLocal()
         try:
             t = new_db.query(Tender).filter(
-                Tender.id == tender_id_copy, Tender.user_id == user_id
+                Tender.id == tender_id_copy, Tender.organization_id == organization_id
             ).first()
             if t:
                 t.personalized_proposal = full_text
@@ -1020,12 +1406,17 @@ async def generate_bid_strategy(
     language: str = Form("english"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    membership: OrgMembership = Depends(get_current_membership),
 ):
     tender = db.query(Tender).filter(
-        Tender.id == tender_id, Tender.user_id == current_user.id
+        Tender.id == tender_id, Tender.organization_id == membership.organization_id
     ).first()
     if not tender:
         raise HTTPException(status_code=404, detail="Tender not found.")
+    if not _can_modify_tender(tender, membership):
+        raise HTTPException(status_code=403, detail="You can only generate bid strategy for tenders you created.")
+
+    org = _get_org(membership.organization_id, db)
 
     tender_analysis = {
         "summary": tender.summary,
@@ -1038,13 +1429,13 @@ async def generate_bid_strategy(
     }
 
     kb = _get_knowledge_base(current_user)
-    kb.setdefault("company_name", current_user.organization_name or "")
+    kb.setdefault("company_name", org.name or "")
     kb.setdefault("contact_name", current_user.contact_name or "")
     kb.setdefault("phone", current_user.phone or "")
     kb.setdefault("address", current_user.address or "")
 
     tender_id_copy = tender.id
-    user_id = current_user.id
+    organization_id = membership.organization_id
 
     async def generate():
         yield _sse({"type": "progress", "stage": "analyzing", "message": "AI generating bid strategy, compliance analysis, and price intelligence..."})
@@ -1083,7 +1474,7 @@ async def generate_bid_strategy(
         new_db = SessionLocal()
         try:
             t = new_db.query(Tender).filter(
-                Tender.id == tender_id_copy, Tender.user_id == user_id
+                Tender.id == tender_id_copy, Tender.organization_id == organization_id
             ).first()
             if t:
                 t.bid_strategy = full_text
@@ -1144,6 +1535,7 @@ async def validate_doc(
 def get_reminders(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    membership: OrgMembership = Depends(get_current_membership),
 ):
     now = datetime.utcnow()
     reminders = []
@@ -1151,7 +1543,7 @@ def get_reminders(
     upcoming = (
         db.query(Tender)
         .filter(
-            Tender.user_id == current_user.id,
+            Tender.organization_id == membership.organization_id,
             Tender.deadline.isnot(None),
             Tender.deadline >= now,
             Tender.deadline <= now + timedelta(days=14),
@@ -1180,7 +1572,7 @@ def get_reminders(
     high_score_reviewing = (
         db.query(Tender)
         .filter(
-            Tender.user_id == current_user.id,
+            Tender.organization_id == membership.organization_id,
             Tender.bid_status == "reviewing",
             Tender.bid_score >= 70,
         )
@@ -1356,6 +1748,7 @@ def import_discovered_tender(
     discovered_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    membership: OrgMembership = Depends(get_current_membership),
 ):
     dt = db.query(DiscoveredTender).filter(DiscoveredTender.id == discovered_id).first()
     if not dt:
@@ -1372,6 +1765,7 @@ def import_discovered_tender(
 
     tender = Tender(
         user_id=current_user.id,
+        organization_id=membership.organization_id,
         title=dt.title,
         language="english",
         status="completed",

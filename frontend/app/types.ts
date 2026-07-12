@@ -15,6 +15,33 @@ export type Subscription = {
   is_unlimited: boolean;
 };
 
+export type OrgRole = "owner" | "admin" | "member";
+
+export type Organization = {
+  id: number;
+  name: string;
+  plan: "free" | "pro" | "business";
+  role: OrgRole;
+};
+
+export type OrgMember = {
+  user_id: number;
+  email: string;
+  contact_name: string;
+  role: OrgRole;
+  joined_at: string;
+};
+
+export type OrgInvite = {
+  id: number;
+  email: string;
+  role: OrgRole;
+  token: string;
+  status: string;
+  expires_at: string | null;
+  created_at: string;
+};
+
 export type PastProject = {
   id: string;
   name: string;

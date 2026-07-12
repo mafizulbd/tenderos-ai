@@ -61,10 +61,18 @@ def test_get_me_bad_token(client):
 def test_update_profile(client, registered):
     r = client.put(
         "/me/profile",
-        json={"organization_name": "ACME Corp", "contact_name": "Jane", "phone": "01234", "address": "Dhaka"},
+        json={"contact_name": "Jane", "phone": "01234", "address": "Dhaka"},
         headers=registered,
     )
     assert r.status_code == 200
     data = r.json()
-    assert data["organization_name"] == "ACME Corp"
     assert data["contact_name"] == "Jane"
+
+
+def test_update_org_name(client, registered):
+    r = client.put("/orgs/me", json={"name": "ACME Corp"}, headers=registered)
+    assert r.status_code == 200
+    assert r.json()["name"] == "ACME Corp"
+
+    me = client.get("/me", headers=registered)
+    assert me.json()["organization_name"] == "ACME Corp"

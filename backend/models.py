@@ -1,6 +1,45 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Boolean
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Boolean, UniqueConstraint
 from datetime import datetime
 from database import Base
+
+
+class Organization(Base):
+    __tablename__ = "organizations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False, default="")
+
+    plan = Column(String(20), default="free")           # free / pro / business
+    monthly_tenders_used = Column(Integer, default=0)
+    monthly_reset_at = Column(DateTime, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class OrgMembership(Base):
+    __tablename__ = "org_memberships"
+    __table_args__ = (UniqueConstraint("organization_id", "user_id", name="uq_org_membership_org_user"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    role = Column(String(20), nullable=False, default="member")     # owner / admin / member
+    status = Column(String(20), nullable=False, default="active")   # active / removed
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class OrgInvite(Base):
+    __tablename__ = "org_invites"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    email = Column(String(255), nullable=False)
+    role = Column(String(20), nullable=False, default="member")
+    token = Column(String(255), unique=True, nullable=False, index=True)
+    invited_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    status = Column(String(20), nullable=False, default="pending")  # pending / accepted / revoked / expired
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=True)
 
 
 class User(Base):
@@ -30,6 +69,7 @@ class Tender(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), index=True, nullable=True)
     title = Column(String(255), nullable=False)
     language = Column(String(50), default="english")
     status = Column(String(50), default="completed")   # completed / failed

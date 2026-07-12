@@ -5,6 +5,7 @@ import { Sidebar } from "./Sidebar";
 import { MetricsGrid } from "./MetricsGrid";
 import { UploadPanel } from "./UploadPanel";
 import { ProfilePanel } from "./ProfilePanel";
+import { TeamPanel } from "./TeamPanel";
 import { KnowledgeBasePanel } from "./KnowledgeBasePanel";
 import { TenderCalendar } from "./TenderCalendar";
 import { TenderLibrary } from "./TenderLibrary";
@@ -12,17 +13,19 @@ import { TenderDetail, TenderDetailEmpty } from "./TenderDetail";
 import ReminderPanel from "./ReminderPanel";
 import TenderDiscovery from "./TenderDiscovery";
 import DocumentValidator from "./DocumentValidator";
-import type { Subscription, TenderDetail as TDetail, TenderSummary, User } from "../types";
+import type { Organization, Subscription, TenderDetail as TDetail, TenderSummary, User } from "../types";
 import { apiRequest } from "../api";
 import { useState } from "react";
 
 type Props = {
   user: User;
   token: string;
+  organization: Organization | null;
   subscription: Subscription | null;
   tenders: TenderSummary[];
   selectedTender: TDetail | null;
   setUser: (u: User) => void;
+  setOrganization: (o: Organization) => void;
   setSubscription: (s: Subscription) => void;
   setTenders: (ts: TenderSummary[]) => void;
   setSelectedTender: (t: TDetail | null) => void;
@@ -34,10 +37,12 @@ type Props = {
 export function Dashboard({
   user,
   token,
+  organization,
   subscription,
   tenders,
   selectedTender,
   setUser,
+  setOrganization,
   setSubscription,
   setTenders,
   setSelectedTender,
@@ -108,6 +113,8 @@ export function Dashboard({
           />
           <ProfilePanel user={user} token={token} onUpdate={setUser} />
         </section>
+
+        <TeamPanel token={token} organization={organization} onOrganizationUpdated={setOrganization} />
 
         <ReminderPanel token={token} onSelectTender={loadTender} />
 

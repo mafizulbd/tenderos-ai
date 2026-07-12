@@ -29,7 +29,6 @@ export function ProfilePanel({ user, token, onUpdate }: Props) {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          organization_name: draft.organization_name,
           contact_name: draft.contact_name,
           phone: draft.phone,
           address: draft.address,
@@ -57,10 +56,9 @@ export function ProfilePanel({ user, token, onUpdate }: Props) {
         <Building2 size={22} />
       </div>
 
-      <label>
-        Organization
-        <input value={draft.organization_name} onChange={(e) => update("organization_name", e.target.value)} />
-      </label>
+      <p className="muted" style={{ marginTop: "-0.5rem" }}>
+        Organization name is managed by the org owner under <strong>Team</strong>.
+      </p>
       <label>
         Contact person
         <input value={draft.contact_name} onChange={(e) => update("contact_name", e.target.value)} />

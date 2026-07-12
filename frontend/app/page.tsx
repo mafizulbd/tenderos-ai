@@ -4,26 +4,47 @@ import { useEffect, useState } from "react";
 import { AuthPage } from "./components/AuthPage";
 import { Dashboard } from "./components/Dashboard";
 import { apiRequest } from "./api";
-import type { Subscription, TenderDetail, TenderSummary, User } from "./types";
+import type { Organization, Subscription, TenderDetail, TenderSummary, User } from "./types";
 
 export default function Home() {
   const [token, setToken] = useState("");
   const [user, setUser] = useState<User | null>(null);
+  const [organization, setOrganization] = useState<Organization | null>(null);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [tenders, setTenders] = useState<TenderSummary[]>([]);
   const [selectedTender, setSelectedTender] = useState<TenderDetail | null>(null);
+  const [inviteToken, setInviteToken] = useState<string | null>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem("tenderos_token") ?? "";
     if (saved) setToken(saved);
+    const invite = new URLSearchParams(window.location.search).get("invite");
+    if (invite) setInviteToken(invite);
   }, []);
 
   useEffect(() => {
     if (!token) return;
     void loadAccount();
+    void loadOrganization();
     void loadTenders();
     void loadSubscription();
   }, [token]);
+
+  useEffect(() => {
+    if (!token || !user || !inviteToken) return;
+    (async () => {
+      try {
+        await apiRequest(`/invites/${inviteToken}/accept`, { method: "POST" }, token);
+        await loadOrganization();
+      } catch {
+        // invite may be invalid/expired — user can keep using their existing org
+      } finally {
+        setInviteToken(null);
+        window.history.replaceState({}, "", window.location.pathname);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, user, inviteToken]);
 
   async function loadAccount() {
     try {
@@ -31,6 +52,15 @@ export default function Home() {
       setUser(data);
     } catch {
       logout();
+    }
+  }
+
+  async function loadOrganization() {
+    try {
+      const data = await apiRequest<Organization>("/orgs/me", {}, token);
+      setOrganization(data);
+    } catch {
+      // non-critical
     }
   }
 
@@ -56,6 +86,7 @@ export default function Home() {
     localStorage.removeItem("tenderos_token");
     setToken("");
     setUser(null);
+    setOrganization(null);
     setSubscription(null);
     setTenders([]);
     setSelectedTender(null);
@@ -77,10 +108,12 @@ export default function Home() {
     <Dashboard
       user={user}
       token={token}
+      organization={organization}
       subscription={subscription}
       tenders={tenders}
       selectedTender={selectedTender}
       setUser={setUser}
+      setOrganization={setOrganization}
       setSubscription={setSubscription}
       setTenders={setTenders}
       setSelectedTender={setSelectedTender}

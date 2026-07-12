@@ -225,6 +225,7 @@ def test_reanalyze_bad_language(client, registered):
     db = SessionLocal()
     tender = Tender(
         user_id=1,
+        organization_id=1,
         title="T",
         language="english",
         status="completed",
