@@ -38,6 +38,7 @@ export function TenderLibrary({ tenders, selectedId, token, onSelect, onDeleted 
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [deleting, setDeleting] = useState<number | null>(null);
+  const [error, setError] = useState("");
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -63,11 +64,12 @@ export function TenderLibrary({ tenders, selectedId, token, onSelect, onDeleted 
     e.stopPropagation();
     if (!confirm("Delete this tender analysis? This cannot be undone.")) return;
     setDeleting(id);
+    setError("");
     try {
       await apiRequest(`/tenders/${id}`, { method: "DELETE" }, token);
       onDeleted(id);
-    } catch {
-      // silently keep the item if delete fails
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Could not delete this tender.");
     } finally {
       setDeleting(null);
     }
@@ -93,6 +95,8 @@ export function TenderLibrary({ tenders, selectedId, token, onSelect, onDeleted 
           />
         </div>
       )}
+
+      {error && <p className="notice error">{error}</p>}
 
       {paged.length === 0 ? (
         <div className="empty-state compact">

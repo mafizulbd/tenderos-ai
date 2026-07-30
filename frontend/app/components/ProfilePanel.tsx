@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Building2, ShieldCheck } from "lucide-react";
 import { apiRequest } from "../api";
 import type { User } from "../types";
@@ -57,7 +58,7 @@ export function ProfilePanel({ user, token, onUpdate }: Props) {
       </div>
 
       <p className="muted" style={{ marginTop: "-0.5rem" }}>
-        Organization name is managed by the org owner under <strong>Team</strong>.
+        Organization name is managed by the org owner under <Link href="/dashboard/team">Team</Link>.
       </p>
       <label>
         Contact person

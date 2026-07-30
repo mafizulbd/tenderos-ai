@@ -22,6 +22,10 @@ services:
     environment:
       DATABASE_URL: postgresql://tenderos:tenderos123@postgres:5432/tenderos_db
       GEMINI_API_KEY: ${GEMINI_API_KEY}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3008}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3008}
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-TenderOS AI <onboarding@resend.dev>}
     ports:
       - "8008:8000"
     depends_on:

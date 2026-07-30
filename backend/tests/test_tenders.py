@@ -18,7 +18,7 @@ def _txt_file(content: str = "Sample tender document with enough text for analys
     return ("test.txt", io.BytesIO(content.encode()), "text/plain")
 
 
-@patch("main.analyze_with_gemini", return_value=MOCK_RESULT)
+@patch("routers.tenders.analyze_with_gemini", return_value=MOCK_RESULT)
 def test_analyze_tender(mock_analyze, client, registered):
     r = client.post(
         "/tenders/analyze",
@@ -36,7 +36,7 @@ def test_analyze_tender(mock_analyze, client, registered):
     assert data["financial_requirements"] is not None
 
 
-@patch("main.analyze_with_gemini", return_value=MOCK_RESULT)
+@patch("routers.tenders.analyze_with_gemini", return_value=MOCK_RESULT)
 def test_analyze_bangla(mock_analyze, client, registered):
     r = client.post(
         "/tenders/analyze",
@@ -48,7 +48,7 @@ def test_analyze_bangla(mock_analyze, client, registered):
     assert r.json()["language"] == "bangla"
 
 
-@patch("main.analyze_with_gemini", return_value=MOCK_RESULT)
+@patch("routers.tenders.analyze_with_gemini", return_value=MOCK_RESULT)
 def test_analyze_with_deadline(mock_analyze, client, registered):
     r = client.post(
         "/tenders/analyze",
@@ -100,7 +100,7 @@ def test_analyze_unsupported_type(client, registered):
     assert r.status_code == 400
 
 
-@patch("main.analyze_with_gemini", return_value=MOCK_RESULT)
+@patch("routers.tenders.analyze_with_gemini", return_value=MOCK_RESULT)
 def test_list_tenders(mock_analyze, client, registered):
     client.post(
         "/tenders/analyze",
@@ -119,7 +119,7 @@ def test_list_tenders(mock_analyze, client, registered):
     assert "bid_score" in items[0]
 
 
-@patch("main.analyze_with_gemini", return_value=MOCK_RESULT)
+@patch("routers.tenders.analyze_with_gemini", return_value=MOCK_RESULT)
 def test_list_tenders_search(mock_analyze, client, registered):
     for title in ("Alpha Tender", "Beta Tender"):
         client.post(
@@ -136,7 +136,7 @@ def test_list_tenders_search(mock_analyze, client, registered):
     assert results[0]["title"] == "Alpha Tender"
 
 
-@patch("main.analyze_with_gemini", return_value=MOCK_RESULT)
+@patch("routers.tenders.analyze_with_gemini", return_value=MOCK_RESULT)
 def test_get_tender(mock_analyze, client, registered):
     tender_id = client.post(
         "/tenders/analyze",
@@ -158,7 +158,7 @@ def test_get_tender_not_found(client, registered):
     assert r.status_code == 404
 
 
-@patch("main.analyze_with_gemini", return_value=MOCK_RESULT)
+@patch("routers.tenders.analyze_with_gemini", return_value=MOCK_RESULT)
 def test_update_tender(mock_analyze, client, registered):
     tender_id = client.post(
         "/tenders/analyze",
@@ -178,7 +178,7 @@ def test_update_tender(mock_analyze, client, registered):
     assert data["notes"] == "Submitted on time."
 
 
-@patch("main.analyze_with_gemini", return_value=MOCK_RESULT)
+@patch("routers.tenders.analyze_with_gemini", return_value=MOCK_RESULT)
 def test_delete_tender(mock_analyze, client, registered):
     tender_id = client.post(
         "/tenders/analyze",
@@ -199,7 +199,7 @@ def test_delete_tender_not_found(client, registered):
     assert r.status_code == 404
 
 
-@patch("main.analyze_with_gemini", return_value=MOCK_RESULT)
+@patch("routers.tenders.analyze_with_gemini", return_value=MOCK_RESULT)
 def test_reanalyze_tender(mock_analyze, client, registered):
     tender_id = client.post(
         "/tenders/analyze",
@@ -262,7 +262,7 @@ def test_subscription(client, registered):
     assert data["is_unlimited"] is False
 
 
-@patch("main.analyze_with_gemini", return_value=MOCK_RESULT)
+@patch("routers.tenders.analyze_with_gemini", return_value=MOCK_RESULT)
 def test_tenders_isolated_per_user(mock_analyze, client):
     """Users cannot see each other's tenders."""
     for email, title in [("a@test.com", "A's Tender"), ("b@test.com", "B's Tender")]:

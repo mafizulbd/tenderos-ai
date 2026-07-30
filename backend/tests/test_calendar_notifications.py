@@ -8,7 +8,7 @@ def _create_tender(client, headers, title="Calendar Test Tender", deadline=None)
     data = {"title": title, "language": "english"}
     if deadline:
         data["deadline"] = deadline
-    with patch("main.analyze_with_gemini", return_value=MOCK_RESULT):
+    with patch("routers.tenders.analyze_with_gemini", return_value=MOCK_RESULT):
         r = client.post(
             "/tenders/analyze",
             data=data,

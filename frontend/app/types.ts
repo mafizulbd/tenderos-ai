@@ -1,6 +1,7 @@
 export type User = {
   id: number;
   email: string;
+  email_verified: boolean;
   organization_name: string;
   contact_name: string;
   phone: string;

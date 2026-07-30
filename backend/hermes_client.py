@@ -6,9 +6,16 @@ import time
 import logging
 from io import BytesIO
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 logger = logging.getLogger(__name__)
+
+_MODEL = "gemini-2.5-flash"
+
+
+def _client() -> genai.Client:
+    return genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
 # Section order MUST match the prompt headings exactly — parser depends on this.
 _SECTIONS = [
@@ -159,10 +166,8 @@ def parse_gemini_response(text: str) -> dict:
 
 def stream_with_gemini(text: str, language: str, company_profile: dict | None = None):
     """Synchronous generator yielding text chunks from Gemini streaming API."""
-    genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-    model = genai.GenerativeModel("gemini-2.5-flash")
     prompt = _build_prompt(text, language, company_profile)
-    for chunk in model.generate_content(prompt, stream=True):
+    for chunk in _client().models.generate_content_stream(model=_MODEL, contents=prompt):
         if getattr(chunk, "text", None):
             yield chunk.text
 
@@ -476,9 +481,7 @@ EXECUTIVE BRIEF:
 def stream_bid_strategy(tender_analysis: dict, company_kb: dict, language: str = "english"):
     """Stream AI bid strategy analysis from Gemini."""
     prompt = _build_bid_strategy_prompt(tender_analysis, company_kb, language)
-    genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-    model = genai.GenerativeModel("gemini-2.5-flash")
-    for chunk in model.generate_content(prompt, stream=True):
+    for chunk in _client().models.generate_content_stream(model=_MODEL, contents=prompt):
         if getattr(chunk, "text", None):
             yield chunk.text
 
@@ -491,9 +494,7 @@ def stream_personalized_proposal(
 ):
     """Stream a complete personalized proposal from Gemini."""
     prompt = _build_proposal_prompt(tender_analysis, company_kb, wizard_data, language)
-    genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-    model = genai.GenerativeModel("gemini-2.5-flash")
-    for chunk in model.generate_content(prompt, stream=True):
+    for chunk in _client().models.generate_content_stream(model=_MODEL, contents=prompt):
         if getattr(chunk, "text", None):
             yield chunk.text
 
@@ -523,13 +524,10 @@ WARNINGS:
 
 def validate_document(file_bytes: bytes, mime_type: str, filename: str) -> dict:
     """Use Gemini to extract and validate a business document."""
-    genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-    model = genai.GenerativeModel("gemini-2.5-flash")
-
     # For images: pass directly. For PDFs: extract text first.
     if mime_type in ("image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"):
         content = [
-            {"mime_type": mime_type, "data": file_bytes},
+            types.Part.from_bytes(data=file_bytes, mime_type=mime_type),
             _DOC_VALIDATOR_PROMPT,
         ]
     else:
@@ -542,7 +540,7 @@ def validate_document(file_bytes: bytes, mime_type: str, filename: str) -> dict:
             text = file_bytes.decode("utf-8", errors="ignore")[:6000]
         content = [f"{_DOC_VALIDATOR_PROMPT}\n\nDOCUMENT TEXT:\n{text}"]
 
-    response = model.generate_content(content)
+    response = _client().models.generate_content(model=_MODEL, contents=content)
     raw = response.text if hasattr(response, "text") else ""
 
     def get(pattern: str) -> str:

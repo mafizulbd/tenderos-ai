@@ -105,7 +105,7 @@ def test_invite_and_accept_flow(client, org_owner):
     assert roles["newmember@example.com"] == "member"
 
 
-@patch("main.analyze_with_gemini", return_value=MOCK_RESULT)
+@patch("routers.tenders.analyze_with_gemini", return_value=MOCK_RESULT)
 def test_member_sees_org_tenders_but_cannot_modify_others(mock_analyze, client, org_with_member):
     owner_headers = org_with_member["owner"]["headers"]
     member_headers = org_with_member["member"]["headers"]
@@ -169,7 +169,7 @@ def test_sole_owner_cannot_be_demoted_or_removed(client, org_owner):
     assert remove.status_code == 400
 
 
-@patch("main.analyze_with_gemini", return_value=MOCK_RESULT)
+@patch("routers.tenders.analyze_with_gemini", return_value=MOCK_RESULT)
 def test_cross_org_isolation(mock_analyze, client, org_owner, second_org):
     upload = client.post(
         "/tenders/analyze",

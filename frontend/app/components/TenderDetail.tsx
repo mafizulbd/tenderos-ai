@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowDownToLine, BrainCircuit, FileSearch, FileSignature, RefreshCw, Save } from "lucide-react";
+import Link from "next/link";
+import { ArrowDownToLine, BrainCircuit, FileSearch, FileSignature, RefreshCw, Save, UploadCloud } from "lucide-react";
 import { API_URL, apiRequest } from "../api";
 import { formatBytes, formatDate } from "../utils";
 import { Section } from "./Section";
@@ -12,6 +13,7 @@ import { CommentsPanel } from "./CommentsPanel";
 import { TasksPanel } from "./TasksPanel";
 import { LinkedVendorsPanel } from "./LinkedVendorsPanel";
 import type { Organization, TenderDetail as TDetail } from "../types";
+import { SECONDARY_MODULES_ENABLED } from "../features";
 
 const BID_STATUSES = [
   { value: "reviewing",  label: "Reviewing" },
@@ -63,6 +65,7 @@ export function TenderDetail({ tender, token, organization, currentUserId, onUpd
   const [error, setError] = useState("");
   const [creatingContract, setCreatingContract] = useState(false);
   const [contractMessage, setContractMessage] = useState("");
+  const [contractCreated, setContractCreated] = useState(false);
 
   const busy = reanalyzing || downloadingDocx || downloadingPdf || savingNotes;
   const decision = extractDecision(tender.bid_recommendation);
@@ -108,13 +111,14 @@ export function TenderDetail({ tender, token, organization, currentUserId, onUpd
   async function createContract() {
     setCreatingContract(true);
     setContractMessage("");
+    setContractCreated(false);
     try {
       await apiRequest("/contracts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: `Contract: ${tender.title}`, tender_id: tender.id }),
       }, token);
-      setContractMessage("Contract created — find it in the Contracts section.");
+      setContractCreated(true);
     } catch (err: unknown) {
       setContractMessage(err instanceof Error ? err.message : "Could not create contract.");
     } finally {
@@ -282,7 +286,7 @@ export function TenderDetail({ tender, token, organization, currentUserId, onUpd
           />
         </label>
 
-        {tender.bid_status === "won" && canModify && (
+        {SECONDARY_MODULES_ENABLED && tender.bid_status === "won" && canModify && (
           <div className="detail-actions" style={{ marginTop: "0.75rem" }}>
             <button onClick={createContract} disabled={creatingContract}>
               <FileSignature size={16} />
@@ -290,36 +294,45 @@ export function TenderDetail({ tender, token, organization, currentUserId, onUpd
             </button>
           </div>
         )}
-        {contractMessage && <p className="notice">{contractMessage}</p>}
+        {SECONDARY_MODULES_ENABLED && contractMessage && <p className="notice error">{contractMessage}</p>}
+        {SECONDARY_MODULES_ENABLED && contractCreated && (
+          <p className="notice">
+            Contract created — <Link href="/dashboard/contracts">view it in Contracts</Link>.
+          </p>
+        )}
       </section>
 
-      <ApprovalPanel
-        tender={tender}
-        token={token}
-        organization={organization}
-        onUpdated={onUpdated}
-      />
+      {SECONDARY_MODULES_ENABLED && (
+        <>
+          <ApprovalPanel
+            tender={tender}
+            token={token}
+            organization={organization}
+            onUpdated={onUpdated}
+          />
 
-      <LinkedVendorsPanel
-        tenderId={tender.id}
-        token={token}
-        canModify={canModify}
-      />
+          <LinkedVendorsPanel
+            tenderId={tender.id}
+            token={token}
+            canModify={canModify}
+          />
 
-      <TasksPanel
-        entityType="tender"
-        entityId={tender.id}
-        token={token}
-        currentUserId={currentUserId}
-      />
+          <TasksPanel
+            entityType="tender"
+            entityId={tender.id}
+            token={token}
+            currentUserId={currentUserId}
+          />
 
-      <CommentsPanel
-        entityType="tender"
-        entityId={tender.id}
-        token={token}
-        currentUserId={currentUserId}
-        organization={organization}
-      />
+          <CommentsPanel
+            entityType="tender"
+            entityId={tender.id}
+            token={token}
+            currentUserId={currentUserId}
+            organization={organization}
+          />
+        </>
+      )}
 
       <BidStrategyPanel
         tender={{ ...tender, bid_strategy: localStrategy }}
@@ -379,7 +392,23 @@ export function TenderDetail({ tender, token, organization, currentUserId, onUpd
   );
 }
 
-export function TenderDetailEmpty() {
+export function TenderDetailEmpty({ hasTenders }: { hasTenders: boolean }) {
+  if (!hasTenders) {
+    return (
+      <div className="detail-stack">
+        <section className="surface empty-state">
+          <FileSearch size={36} />
+          <h2>No tenders yet</h2>
+          <p className="muted">Upload your first tender to analyze it and start tracking your bid.</p>
+          <Link href="/dashboard#analyze" className="btn-link primary" style={{ marginTop: 12 }}>
+            <UploadCloud size={16} />
+            Upload a tender
+          </Link>
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div className="detail-stack">
       <section className="surface empty-state">

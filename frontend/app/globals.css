@@ -204,6 +204,22 @@ a:hover {
   margin-top: 18px;
 }
 
+.link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  text-align: left;
+  text-decoration: underline;
+  cursor: pointer;
+  justify-self: start;
+}
+
+.link-button:hover {
+  color: inherit;
+}
+
 .auth-points span {
   display: inline-flex;
   align-items: center;
@@ -952,6 +968,34 @@ a:hover {
   border-color: #ffd88a;
   background: #fff8e8;
   color: #684600;
+}
+
+.verify-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.verify-banner span {
+  flex: 1;
+}
+
+.verify-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.verify-banner-actions button:not(.link-button) {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid #ffd88a;
+  background: #fff;
+  color: #684600;
+  cursor: pointer;
+  font-size: 0.85rem;
 }
 
 /* Usage limit banner */

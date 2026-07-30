@@ -11,7 +11,7 @@ import {
 import { apiRequest } from "../api";
 import type { User } from "../types";
 
-type AuthMode = "login" | "signup";
+type AuthMode = "login" | "signup" | "forgot";
 
 type Props = {
   onLogin: (token: string, user: User) => void;
@@ -23,6 +23,7 @@ export function AuthPage({ onLogin }: Props) {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [forgotSent, setForgotSent] = useState(false);
 
   async function authenticate() {
     setLoading(true);
@@ -40,6 +41,30 @@ export function AuthPage({ onLogin }: Props) {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function requestPasswordReset() {
+    setLoading(true);
+    setError("");
+    try {
+      await apiRequest("/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      setForgotSent(true);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Could not send reset email.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function switchMode(mode: AuthMode) {
+    setAuthMode(mode);
+    setError("");
+    setForgotSent(false);
+    setPassword("");
   }
 
   return (
@@ -68,46 +93,93 @@ export function AuthPage({ onLogin }: Props) {
       </section>
 
       <section className="auth-panel">
-        <div className="segmented">
-          <button
-            className={authMode === "login" ? "active" : ""}
-            onClick={() => setAuthMode("login")}
-          >
-            Login
-          </button>
-          <button
-            className={authMode === "signup" ? "active" : ""}
-            onClick={() => setAuthMode("signup")}
-          >
-            Sign up
-          </button>
-        </div>
+        {authMode !== "forgot" && (
+          <div className="segmented">
+            <button
+              className={authMode === "login" ? "active" : ""}
+              onClick={() => switchMode("login")}
+            >
+              Login
+            </button>
+            <button
+              className={authMode === "signup" ? "active" : ""}
+              onClick={() => switchMode("signup")}
+            >
+              Sign up
+            </button>
+          </div>
+        )}
 
-        <label>
-          Email
-          <input
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && authenticate()}
-          />
-        </label>
+        {authMode === "forgot" ? (
+          forgotSent ? (
+            <>
+              <p className="notice">
+                If an account exists for <strong>{email}</strong>, a password reset link has been
+                sent. Check your inbox.
+              </p>
+              <button className="primary full-button" onClick={() => switchMode("login")}>
+                Back to login
+              </button>
+            </>
+          ) : (
+            <>
+              <label>
+                Email
+                <input
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && requestPasswordReset()}
+                  autoFocus
+                />
+              </label>
+              {error && <p className="notice error">{error}</p>}
+              <button
+                className="primary full-button"
+                onClick={requestPasswordReset}
+                disabled={loading || !email}
+              >
+                {loading ? "Please wait..." : "Send reset link"}
+              </button>
+              <button className="link-button" onClick={() => switchMode("login")}>
+                Back to login
+              </button>
+            </>
+          )
+        ) : (
+          <>
+            <label>
+              Email
+              <input
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && authenticate()}
+              />
+            </label>
 
-        <label>
-          Password
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && authenticate()}
-          />
-        </label>
+            <label>
+              Password
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && authenticate()}
+              />
+            </label>
 
-        {error && <p className="notice error">{error}</p>}
+            {authMode === "login" && (
+              <button className="link-button" onClick={() => switchMode("forgot")}>
+                Forgot password?
+              </button>
+            )}
 
-        <button className="primary full-button" onClick={authenticate} disabled={loading}>
-          <UserRound size={18} />
-          {loading ? "Please wait..." : authMode === "login" ? "Login" : "Create account"}
-        </button>
+            {error && <p className="notice error">{error}</p>}
+
+            <button className="primary full-button" onClick={authenticate} disabled={loading}>
+              <UserRound size={18} />
+              {loading ? "Please wait..." : authMode === "login" ? "Login" : "Create account"}
+            </button>
+          </>
+        )}
       </section>
     </main>
   );

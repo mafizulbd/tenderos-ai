@@ -7,6 +7,7 @@ import {
   FolderKanban, Globe, LogOut, ShieldCheck, Users,
 } from "lucide-react";
 import type { User } from "../types";
+import { SECONDARY_MODULES_ENABLED } from "../features";
 
 type Props = {
   user: User;
@@ -29,8 +30,12 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Manage",
     items: [
       { href: "/dashboard/team", label: "Team", icon: Users },
-      { href: "/dashboard/vendors", label: "Vendors", icon: Building },
-      { href: "/dashboard/contracts", label: "Contracts", icon: FileSignature },
+      ...(SECONDARY_MODULES_ENABLED
+        ? [
+            { href: "/dashboard/vendors", label: "Vendors", icon: Building },
+            { href: "/dashboard/contracts", label: "Contracts", icon: FileSignature },
+          ]
+        : []),
       { href: "/dashboard/knowledge-base", label: "Knowledge base", icon: BookOpen },
       { href: "/dashboard/profile", label: "Company profile", icon: Building2 },
     ],

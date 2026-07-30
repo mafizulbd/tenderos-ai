@@ -58,7 +58,7 @@ export default function TendersPage() {
               onTendersChanged={loadTenders}
             />
           ) : (
-            <TenderDetailEmpty />
+            <TenderDetailEmpty hasTenders={tenders.length > 0} />
           )}
         </section>
       </section>

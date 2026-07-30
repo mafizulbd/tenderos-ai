@@ -63,6 +63,12 @@ class User(Base):
     knowledge_base = Column(Text, default="{}")   # JSON: past_projects, team, equipment, certs
     created_at = Column(DateTime, default=datetime.utcnow)
 
+    email_verified = Column(Boolean, default=False)
+    email_verification_token = Column(String(255), nullable=True, index=True)
+    email_verification_expires_at = Column(DateTime, nullable=True)
+    password_reset_token = Column(String(255), nullable=True, index=True)
+    password_reset_expires_at = Column(DateTime, nullable=True)
+
 
 class Tender(Base):
     __tablename__ = "tenders"

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Building, Link2, Trash2 } from "lucide-react";
 import { apiRequest } from "../api";
 import type { TenderVendorLink, Vendor } from "../types";
@@ -97,7 +98,20 @@ export function LinkedVendorsPanel({ tenderId, token, canModify }: Props) {
         </div>
       ))}
 
-      {canModify && (
+      {canModify && vendors.length === 0 && (
+        <p className="muted" style={{ fontSize: 13 }}>
+          You have no vendors yet.{" "}
+          <Link href="/dashboard/vendors">Add one</Link> to link subcontractors or suppliers to this tender.
+        </p>
+      )}
+
+      {canModify && vendors.length > 0 && availableVendors.length === 0 && (
+        <p className="muted" style={{ fontSize: 13 }}>
+          All your vendors are already linked to this tender.
+        </p>
+      )}
+
+      {canModify && availableVendors.length > 0 && (
         <div className="field-row">
           <label>
             Vendor

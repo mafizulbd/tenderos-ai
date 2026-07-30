@@ -4,7 +4,7 @@ from tests.test_tenders import MOCK_RESULT, _txt_file
 
 
 def _create_tender(client, headers, title="Vendor Test Tender"):
-    with patch("main.analyze_with_gemini", return_value=MOCK_RESULT):
+    with patch("routers.tenders.analyze_with_gemini", return_value=MOCK_RESULT):
         r = client.post(
             "/tenders/analyze",
             data={"title": title, "language": "english"},
