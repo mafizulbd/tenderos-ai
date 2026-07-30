@@ -23,6 +23,7 @@ interface DiscoveryState {
 }
 
 const SOURCE_COLORS: Record<string, string> = {
+  "eGP Bangladesh": "#006a4e",
   "World Bank": "#0066cc",
   "UNGM": "#009edb",
   "ADB": "#e3001b",
@@ -141,7 +142,7 @@ export default function TenderDiscovery({
 
       <div className="discovery-sources">
         <span className="disc-source-label">Sources:</span>
-        {["World Bank", "UNGM", "ADB", "UNDP"].map((s) => (
+        {["eGP Bangladesh", "World Bank", "UNGM", "ADB", "UNDP"].map((s) => (
           <button
             key={s}
             className={`disc-source-chip ${sourceFilter === s ? "active" : ""}`}
@@ -179,14 +180,14 @@ export default function TenderDiscovery({
       {loading && items.length === 0 ? (
         <div className="discovery-loading">
           <div className="spinner-ring" />
-          <span>Loading opportunities from World Bank, UNGM, ADB, UNDP...</span>
+          <span>Loading opportunities from eGP Bangladesh, World Bank, UNGM, ADB, UNDP...</span>
         </div>
       ) : items.length === 0 ? (
         <div className="discovery-empty">
           <Globe size={32} className="disc-empty-icon" />
           <div className="disc-empty-title">No tenders discovered yet</div>
           <div className="disc-empty-sub">
-            Click "Scan Sources" to fetch live procurement opportunities from World Bank, UNGM, ADB, and UNDP.
+            Click "Scan Sources" to fetch live procurement opportunities from eGP Bangladesh, World Bank, UNGM, ADB, and UNDP.
           </div>
           <button className="disc-scan-btn" onClick={triggerRefresh}>
             <RefreshCw size={14} /> Start Discovery

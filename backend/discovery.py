@@ -21,12 +21,87 @@ HEADERS = {
 def _safe_date(val: str | None) -> datetime | None:
     if not val:
         return None
-    for fmt in ("%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y"):
+    for fmt in (
+        "%Y-%m-%dT%H:%M:%SZ",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%d",
+        "%d/%m/%Y",
+        "%m/%d/%Y",
+        "%d-%b-%Y %H:%M",
+    ):
         try:
             return datetime.strptime(val.strip()[:19], fmt)
         except Exception:
             continue
     return None
+
+
+def _cells(td) -> list[str]:
+    """Split a <td> into its <br>-separated text pieces, trimmed of stray commas."""
+    text = td.get_text("\x01", strip=True)
+    return [p.strip().rstrip(",").strip() for p in text.split("\x01") if p.strip()]
+
+
+# ---------------------------------------------------------------------------
+# eprocure.gov.bd (Bangladesh e-GP) — the primary government tender source
+# ---------------------------------------------------------------------------
+
+def scrape_eprocure_bd() -> list[dict]:
+    try:
+        url = "https://www.eprocure.gov.bd/TenderDetailsServlet"
+        payload = {
+            "funName": "AllTenders",
+            "keyword": "",
+            "pageNo": "1",
+            "size": "30",
+            "homeWSearch": "homeWSearch",
+            "approve": "false",
+            "h": "t",
+        }
+        resp = requests.post(url, data=payload, timeout=20, headers=HEADERS)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+        results = []
+        for row in soup.find_all("tr"):
+            cols = row.find_all("td")
+            if len(cols) < 6:
+                continue
+
+            id_input = cols[2].find("input", {"name": "id"})
+            if not id_input or not id_input.get("value"):
+                continue
+            tender_id = id_input["value"].strip()
+
+            status_parts = _cells(cols[1])
+            status = status_parts[-1] if status_parts else ""
+            if status.lower() != "live":
+                continue
+
+            nature = cols[2].contents[0].strip().rstrip(",") if cols[2].contents else ""
+            brief = cols[2].find("span", id=lambda v: bool(v) and v.startswith("tenderBrief_"))
+            title = brief.get_text(" ", strip=True) if brief else ""
+
+            pe_text = ", ".join(_cells(cols[3]))
+            type_method = ", ".join(_cells(cols[4]))
+            dates = _cells(cols[5])
+            deadline = _safe_date(dates[1]) if len(dates) > 1 else None
+
+            results.append({
+                "source": "eGP Bangladesh",
+                "external_id": f"eprocure_{tender_id}",
+                "title": (title or "eGP Tender")[:500],
+                "description": f"Procuring Entity: {pe_text}"[:800],
+                "category": ", ".join(p for p in [nature, type_method] if p)[:300],
+                "deadline": deadline,
+                "estimated_value": "",
+                "url": f"https://www.eprocure.gov.bd/resources/common/ViewTender.jsp?id={tender_id}&h=t",
+                "country": "Bangladesh",
+            })
+        logger.info("eGP Bangladesh: found %d notices", len(results))
+        return results
+    except Exception as e:
+        logger.warning("eGP Bangladesh scrape failed: %s", e)
+        return []
 
 
 # ---------------------------------------------------------------------------
@@ -198,7 +273,7 @@ def scrape_undp() -> list[dict]:
 def run_all_scrapers() -> list[dict]:
     """Run all scrapers and return deduplicated results."""
     results = []
-    for fn in [scrape_world_bank, scrape_ungm, scrape_adb, scrape_undp]:
+    for fn in [scrape_eprocure_bd, scrape_world_bank, scrape_ungm, scrape_adb, scrape_undp]:
         results.extend(fn())
     # Deduplicate by external_id
     seen: set[str] = set()
