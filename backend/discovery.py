@@ -28,6 +28,7 @@ def _safe_date(val: str | None) -> datetime | None:
         "%d/%m/%Y",
         "%m/%d/%Y",
         "%d-%b-%Y %H:%M",
+        "%d-%b-%y",
     ):
         try:
             return datetime.strptime(val.strip()[:19], fmt)
@@ -108,14 +109,25 @@ def scrape_eprocure_bd() -> list[dict]:
 # World Bank Bangladesh procurement notices (public JSON API)
 # ---------------------------------------------------------------------------
 
+_WB_OPEN_NOTICE_TYPES = {
+    "Invitation for Bids",
+    "Request for Expression of Interest",
+    "General Procurement Notice",
+    "Specific Procurement Notice",
+    "Request for Proposals",
+    "Request for Qualifications",
+}
+
+
 def scrape_world_bank() -> list[dict]:
     try:
+        # The API's country facet (country_code/fq) no longer filters correctly, so we
+        # keyword-search "Bangladesh" and then verify project_ctry_name ourselves.
         url = "https://search.worldbank.org/api/v2/procnotices"
         params = {
             "format": "json",
-            "fl": "id,noticetitle,noticedate,submission_date_deadline,noticetext,prodline,regionname",
-            "fq": "country_code:BD",
-            "rows": 25,
+            "qterm": "Bangladesh",
+            "rows": 40,
             "os": 0,
             "srt": "noticedate",
             "order": "desc",
@@ -123,21 +135,30 @@ def scrape_world_bank() -> list[dict]:
         resp = requests.get(url, params=params, timeout=15, headers=HEADERS)
         resp.raise_for_status()
         data = resp.json()
-        notices = data.get("procnotices", {}).get("procurement", [])
+        notices = data.get("procnotices", [])
         results = []
         for n in notices:
+            if n.get("project_ctry_name") != "Bangladesh":
+                continue
+            if n.get("notice_type") not in _WB_OPEN_NOTICE_TYPES:
+                continue
             nid = str(n.get("id", ""))
             if not nid:
                 continue
+            project_id = n.get("project_id", "")
+            description = BeautifulSoup(n.get("notice_text") or "", "html.parser").get_text(" ", strip=True)
             results.append({
                 "source": "World Bank",
                 "external_id": f"wb_{nid}",
-                "title": (n.get("noticetitle") or "Untitled")[:500],
-                "description": (n.get("noticetext") or "")[:800],
-                "category": (n.get("prodline") or "")[:300],
-                "deadline": _safe_date(n.get("submission_date_deadline")),
+                "title": (n.get("bid_description") or n.get("project_name") or "Untitled")[:500],
+                "description": description[:800],
+                "category": (n.get("notice_type") or "")[:300],
+                "deadline": _safe_date(n.get("submission_deadline_date")),
                 "estimated_value": "",
-                "url": f"https://projects.worldbank.org/en/projects-operations/procurement/dombyguid?guid={nid}",
+                "url": (
+                    f"https://projects.worldbank.org/en/projects-operations/project-detail/{project_id}"
+                    if project_id else "https://projects.worldbank.org/en/projects-operations/procurement"
+                ),
                 "country": "Bangladesh",
             })
         logger.info("World Bank: found %d notices", len(results))
@@ -188,75 +209,46 @@ def scrape_ungm() -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# ADB (Asian Development Bank) — Bangladesh projects
-# ---------------------------------------------------------------------------
-
-def scrape_adb() -> list[dict]:
-    try:
-        url = "https://www.adb.org/projects/feed"
-        params = {"field_project_country_tid": 20, "field_project_type_tid": 31038}
-        resp = requests.get(url, params=params, timeout=15, headers=HEADERS)
-        resp.raise_for_status()
-        soup = BeautifulSoup(resp.content, "xml")
-        results = []
-        for item in soup.find_all("item")[:20]:
-            title = item.find("title")
-            link  = item.find("link")
-            desc  = item.find("description")
-            pub   = item.find("pubDate")
-            title_text = title.get_text(strip=True) if title else "ADB Tender"
-            link_text  = link.get_text(strip=True) if link else ""
-            eid = f"adb_{re.sub(r'[^a-z0-9]', '_', title_text.lower())[:40]}"
-            results.append({
-                "source": "ADB",
-                "external_id": eid,
-                "title": title_text[:500],
-                "description": BeautifulSoup(desc.get_text() if desc else "", "html.parser").get_text()[:800],
-                "category": "ADB Project",
-                "deadline": None,
-                "estimated_value": "",
-                "url": link_text,
-                "country": "Bangladesh",
-            })
-        logger.info("ADB: found %d notices", len(results))
-        return results
-    except Exception as e:
-        logger.warning("ADB scrape failed: %s", e)
-        return []
-
-
-# ---------------------------------------------------------------------------
 # UNDP Bangladesh procurement notices
 # ---------------------------------------------------------------------------
 
 def scrape_undp() -> list[dict]:
     try:
-        url = "https://procurement-notices.undp.org/view_notices.cfm"
-        params = {"notice_type_id": 2, "country_id": 16, "lcc": "BGD"}
-        resp = requests.get(url, params=params, timeout=20, headers=HEADERS)
+        # procurement-notices.undp.org now renders every open global notice
+        # server-side on one page (no query-string filtering); we filter for
+        # Bangladesh ourselves.
+        url = "https://procurement-notices.undp.org/search.cfm"
+        resp = requests.get(url, timeout=25, headers=HEADERS)
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, "html.parser")
         results = []
-        for row in soup.select("table.procurement-table tr, div.notice-row, tr.odd, tr.even")[:20]:
-            cols = row.find_all(["td", "th"])
-            if len(cols) < 3:
+        for row in soup.select("a.vacanciesTableLink"):
+            fields: dict[str, str] = {}
+            for cell in row.select(".vacanciesTable__cell"):
+                label = cell.select_one(".vacanciesTable__cell__label")
+                span = cell.find("span")
+                if not label or not span:
+                    continue
+                fields[label.get_text(strip=True).lower()] = span.get_text(" ", strip=True)
+
+            office = fields.get("undp office/country", "")
+            if "bangladesh" not in office.lower():
                 continue
-            link_tag = row.find("a")
-            title = link_tag.get_text(strip=True) if link_tag else cols[0].get_text(strip=True)
-            if not title or len(title) < 5:
-                continue
-            href = link_tag.get("href", "") if link_tag else ""
-            eid = f"undp_{re.sub(r'[^a-z0-9]', '_', title.lower())[:40]}"
-            deadline_text = cols[-1].get_text(strip=True) if cols else ""
+
+            href = row.get("href", "")
+            notice_match = re.search(r"(?:nego_id|notice_id)=(\d+)", href)
+            eid = f"undp_{notice_match.group(1)}" if notice_match else f"undp_{fields.get('ref no', '')}"
+            deadline_text = fields.get("deadline", "").split()[0] if fields.get("deadline") else ""
+
             results.append({
                 "source": "UNDP",
                 "external_id": eid,
-                "title": title[:500],
-                "description": "",
-                "category": "UNDP Procurement",
+                "title": (fields.get("title") or "UNDP Procurement Notice")[:500],
+                "description": f"Ref: {fields.get('ref no', '')} | {office.strip()}"[:800],
+                "category": (fields.get("process") or "")[:300],
                 "deadline": _safe_date(deadline_text),
                 "estimated_value": "",
-                "url": href if href.startswith("http") else f"https://procurement-notices.undp.org/{href}",
+                "url": f"https://procurement-notices.undp.org/{href}",
                 "country": "Bangladesh",
             })
         logger.info("UNDP: found %d notices", len(results))
@@ -273,7 +265,7 @@ def scrape_undp() -> list[dict]:
 def run_all_scrapers() -> list[dict]:
     """Run all scrapers and return deduplicated results."""
     results = []
-    for fn in [scrape_eprocure_bd, scrape_world_bank, scrape_ungm, scrape_adb, scrape_undp]:
+    for fn in [scrape_eprocure_bd, scrape_world_bank, scrape_ungm, scrape_undp]:
         results.extend(fn())
     # Deduplicate by external_id
     seen: set[str] = set()

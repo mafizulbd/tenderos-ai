@@ -53,8 +53,110 @@ def test_run_all_scrapers_includes_eprocure_first():
     with patch("discovery.scrape_eprocure_bd", return_value=[{"external_id": "eprocure_1"}]), \
          patch("discovery.scrape_world_bank", return_value=[{"external_id": "wb_1"}]), \
          patch("discovery.scrape_ungm", return_value=[]), \
-         patch("discovery.scrape_adb", return_value=[]), \
          patch("discovery.scrape_undp", return_value=[]):
         results = discovery.run_all_scrapers()
 
     assert [r["external_id"] for r in results] == ["eprocure_1", "wb_1"]
+
+
+# Trimmed real response from search.worldbank.org/api/v2/procnotices?qterm=Bangladesh —
+# one Bangladesh "Invitation for Bids" (should be kept), one Bangladesh "Contract Award"
+# (already awarded, should be filtered out) and one non-Bangladesh false-positive keyword
+# match (should be filtered out by project_ctry_name).
+WORLD_BANK_PAYLOAD = {
+    "procnotices": [
+        {
+            "id": "OP00455112",
+            "notice_type": "Invitation for Bids",
+            "project_ctry_name": "Bangladesh",
+            "project_id": "P178985",
+            "project_name": "Bangladesh Resilient Urban and Territorial Development Project",
+            "bid_description": "Construction of RCC/BC Road with street light, drain and culvert",
+            "submission_deadline_date": "2026-07-16T00:00:00Z",
+            "notice_text": "<p>e-Tender Notice No-01/2025-2026(OTM)</p>",
+        },
+        {
+            "id": "OP00459229",
+            "notice_type": "Contract Award",
+            "project_ctry_name": "Bangladesh",
+            "project_id": "P178985",
+            "project_name": "Bangladesh Resilient Urban and Territorial Development Project",
+            "bid_description": "Improvement of BC Road, Drain with Street Light",
+            "notice_text": "<p>Contract Award</p>",
+        },
+        {
+            "id": "OP00459270",
+            "notice_type": "Contract Award",
+            "project_ctry_name": "Eastern and Southern Africa",
+            "project_id": "P999999",
+            "bid_description": "Construction works of Cattle Crash",
+            "notice_text": "<p>Contract Award</p>",
+        },
+    ]
+}
+
+
+def test_scrape_world_bank_filters_country_and_open_notice_types():
+    resp = Mock()
+    resp.json = Mock(return_value=WORLD_BANK_PAYLOAD)
+    resp.raise_for_status = Mock()
+
+    with patch("discovery.requests.get", return_value=resp) as mock_get:
+        results = discovery.scrape_world_bank()
+
+    assert mock_get.call_args.kwargs["params"]["qterm"] == "Bangladesh"
+    assert len(results) == 1
+    item = results[0]
+    assert item["external_id"] == "wb_OP00455112"
+    assert item["title"] == "Construction of RCC/BC Road with street light, drain and culvert"
+    assert item["url"] == "https://projects.worldbank.org/en/projects-operations/project-detail/P178985"
+    assert item["deadline"].isoformat() == "2026-07-16T00:00:00"
+
+
+def test_scrape_world_bank_returns_empty_list_on_request_failure():
+    with patch("discovery.requests.get", side_effect=RuntimeError("network down")):
+        results = discovery.scrape_world_bank()
+    assert results == []
+
+
+# Trimmed real fragment from procurement-notices.undp.org/search.cfm — one Bangladesh
+# notice (kept) and one non-Bangladesh notice (filtered out).
+UNDP_FRAGMENT = """
+<a href="view_negotiation.cfm?nego_id=48093" class="vacanciesTableLink vacanciesTable__row">
+  <div class="vacanciesTable__cell"><div class="vacanciesTable__cell__label">Title</div><span>Supply, Installation, Testing and Commissioning of Fire Hydrant System</span></div>
+  <div class="vacanciesTable__cell"><div class="vacanciesTable__cell__label">Ref No</div><span>UNDP-BGD-01188</span></div>
+  <div class="vacanciesTable__cell"><div class="vacanciesTable__cell__label">UNDP Office/Country</div><span>UNDP-BGD/BANGLADESH</span></div>
+  <div class="vacanciesTable__cell"><div class="vacanciesTable__cell__label">Process</div><span>RFQ - Request for quotation</span></div>
+  <div class="vacanciesTable__cell"><div class="vacanciesTable__cell__label">Deadline</div><span><nobr>13-Aug-26<br>06:30 AM (New York time)</nobr></span></div>
+</a>
+<a href="view_negotiation.cfm?nego_id=48089" class="vacanciesTableLink vacanciesTable__row">
+  <div class="vacanciesTable__cell"><div class="vacanciesTable__cell__label">Title</div><span>RFQ-Supply, Delivery and Set-up of Community Nursery Infrastructure</span></div>
+  <div class="vacanciesTable__cell"><div class="vacanciesTable__cell__label">Ref No</div><span>UNDP-WSM-00247</span></div>
+  <div class="vacanciesTable__cell"><div class="vacanciesTable__cell__label">UNDP Office/Country</div><span>UNDP-WSM/SAMOA</span></div>
+  <div class="vacanciesTable__cell"><div class="vacanciesTable__cell__label">Process</div><span>RFQ - Request for quotation</span></div>
+  <div class="vacanciesTable__cell"><div class="vacanciesTable__cell__label">Deadline</div><span><nobr>13-Aug-26<br>09:59 AM (New York time)</nobr></span></div>
+</a>
+"""
+
+
+def test_scrape_undp_filters_to_bangladesh():
+    resp = Mock()
+    resp.text = UNDP_FRAGMENT
+    resp.raise_for_status = Mock()
+
+    with patch("discovery.requests.get", return_value=resp):
+        results = discovery.scrape_undp()
+
+    assert len(results) == 1
+    item = results[0]
+    assert item["external_id"] == "undp_48093"
+    assert "Fire Hydrant" in item["title"]
+    assert item["category"] == "RFQ - Request for quotation"
+    assert item["url"] == "https://procurement-notices.undp.org/view_negotiation.cfm?nego_id=48093"
+    assert item["deadline"].isoformat() == "2026-08-13T00:00:00"
+
+
+def test_scrape_undp_returns_empty_list_on_request_failure():
+    with patch("discovery.requests.get", side_effect=RuntimeError("network down")):
+        results = discovery.scrape_undp()
+    assert results == []
