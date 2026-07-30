@@ -1,6 +1,7 @@
 "use client";
 import { useRef, useState } from "react";
 import { ShieldCheck, Upload, AlertTriangle, CheckCircle, XCircle, Clock, FileText } from "lucide-react";
+import { API_URL } from "../api";
 
 interface ValidationResult {
   filename: string;
@@ -29,8 +30,6 @@ export default function DocumentValidator({ token }: { token: string }) {
   const [error, setError] = useState("");
   const [result, setResult] = useState<ValidationResult | null>(null);
 
-  const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
   async function validate(file: File) {
     setLoading(true);
     setError("");
@@ -40,7 +39,7 @@ export default function DocumentValidator({ token }: { token: string }) {
     form.append("file", file);
 
     try {
-      const res = await fetch(`${API}/documents/validate`, {
+      const res = await fetch(`${API_URL}/documents/validate`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
         body: form,

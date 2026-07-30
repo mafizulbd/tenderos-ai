@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { Globe, RefreshCw, Download, Search, AlertTriangle, ExternalLink, Calendar } from "lucide-react";
+import { API_URL } from "../api";
 
 interface DiscoveredItem {
   id: number;
@@ -51,8 +52,6 @@ export default function TenderDiscovery({
   const [error, setError] = useState("");
   const [importedIds, setImportedIds] = useState<Set<number>>(new Set());
 
-  const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
   async function fetchDiscovered(s = search, src = sourceFilter) {
     setLoading(true);
     setError("");
@@ -60,7 +59,7 @@ export default function TenderDiscovery({
       const params = new URLSearchParams({ limit: "100" });
       if (s.trim()) params.set("search", s.trim());
       if (src.trim()) params.set("source", src.trim());
-      const res = await fetch(`${API}/discover?${params}`, {
+      const res = await fetch(`${API_URL}/discover?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error("Failed to load discovered tenders");
@@ -76,7 +75,7 @@ export default function TenderDiscovery({
   async function triggerRefresh() {
     setError("");
     try {
-      const res = await fetch(`${API}/discover/refresh`, {
+      const res = await fetch(`${API_URL}/discover/refresh`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -91,7 +90,7 @@ export default function TenderDiscovery({
   async function importTender(id: number) {
     setImporting(id);
     try {
-      const res = await fetch(`${API}/discover/${id}/import`, {
+      const res = await fetch(`${API_URL}/discover/${id}/import`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
       });
