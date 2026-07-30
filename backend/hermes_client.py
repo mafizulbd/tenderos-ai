@@ -167,7 +167,11 @@ def parse_gemini_response(text: str) -> dict:
 def stream_with_gemini(text: str, language: str, company_profile: dict | None = None):
     """Synchronous generator yielding text chunks from Gemini streaming API."""
     prompt = _build_prompt(text, language, company_profile)
-    for chunk in _client().models.generate_content_stream(model=_MODEL, contents=prompt):
+    # The client must be held in a variable for the generator's lifetime — an
+    # inline `_client()` here gets garbage-collected (closing its underlying
+    # HTTP client) before the lazy stream is actually consumed.
+    client = _client()
+    for chunk in client.models.generate_content_stream(model=_MODEL, contents=prompt):
         if getattr(chunk, "text", None):
             yield chunk.text
 
@@ -481,7 +485,8 @@ EXECUTIVE BRIEF:
 def stream_bid_strategy(tender_analysis: dict, company_kb: dict, language: str = "english"):
     """Stream AI bid strategy analysis from Gemini."""
     prompt = _build_bid_strategy_prompt(tender_analysis, company_kb, language)
-    for chunk in _client().models.generate_content_stream(model=_MODEL, contents=prompt):
+    client = _client()
+    for chunk in client.models.generate_content_stream(model=_MODEL, contents=prompt):
         if getattr(chunk, "text", None):
             yield chunk.text
 
@@ -494,7 +499,8 @@ def stream_personalized_proposal(
 ):
     """Stream a complete personalized proposal from Gemini."""
     prompt = _build_proposal_prompt(tender_analysis, company_kb, wizard_data, language)
-    for chunk in _client().models.generate_content_stream(model=_MODEL, contents=prompt):
+    client = _client()
+    for chunk in client.models.generate_content_stream(model=_MODEL, contents=prompt):
         if getattr(chunk, "text", None):
             yield chunk.text
 
