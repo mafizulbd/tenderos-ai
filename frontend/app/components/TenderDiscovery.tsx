@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { Globe, RefreshCw, Download, Search, AlertTriangle, ExternalLink, Calendar } from "lucide-react";
 import { API_URL } from "../api";
+import { useLanguage } from "../i18n/LanguageContext";
 
 interface DiscoveredItem {
   id: number;
@@ -43,6 +44,7 @@ export default function TenderDiscovery({
   token: string;
   onImported?: (tender: any) => void;
 }) {
+  const { t } = useLanguage();
   const [items, setItems] = useState<DiscoveredItem[]>([]);
   const [state, setState] = useState<DiscoveryState>({ running: false, last_run: null, count: 0 });
   const [loading, setLoading] = useState(false);
@@ -62,12 +64,12 @@ export default function TenderDiscovery({
       const res = await fetch(`${API_URL}/discover?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) throw new Error("Failed to load discovered tenders");
+      if (!res.ok) throw new Error(t("discovery", "loadFailed"));
       const data = await res.json();
       setItems(data.tenders || []);
       setState(data.state || { running: false, last_run: null, count: 0 });
     } catch (e: any) {
-      setError(e.message || "Failed to load");
+      setError(e.message || t("discovery", "loadFailedGeneric"));
     }
     setLoading(false);
   }
@@ -83,7 +85,7 @@ export default function TenderDiscovery({
       setState(data.state || state);
       setTimeout(() => fetchDiscovered(), 8000);
     } catch (e: any) {
-      setError("Refresh failed: " + e.message);
+      setError(`${t("discovery", "refreshFailedPrefix")} ${e.message}`);
     }
   }
 
@@ -96,13 +98,13 @@ export default function TenderDiscovery({
       });
       if (!res.ok) {
         const d = await res.json();
-        throw new Error(d.detail || "Import failed");
+        throw new Error(d.detail || t("discovery", "importFailed"));
       }
       const tender = await res.json();
       setImportedIds((prev) => new Set([...prev, id]));
       onImported && onImported(tender);
     } catch (e: any) {
-      setError(e.message || "Import failed");
+      setError(e.message || t("discovery", "importFailed"));
     }
     setImporting(null);
   }
@@ -118,13 +120,13 @@ export default function TenderDiscovery({
       <div className="discovery-header">
         <div className="discovery-title">
           <Globe size={18} />
-          <span>AI Tender Discovery</span>
-          <span className="discovery-count">{items.length} opportunities</span>
+          <span>{t("discovery", "heading")}</span>
+          <span className="discovery-count">{t("discovery", "opportunitiesCount", { count: items.length })}</span>
         </div>
         <div className="discovery-actions">
           {state.last_run && (
             <span className="discovery-last-run">
-              Last run: {new Date(state.last_run).toLocaleString()}
+              {t("discovery", "lastRun", { time: new Date(state.last_run).toLocaleString() })}
             </span>
           )}
           <button
@@ -133,13 +135,13 @@ export default function TenderDiscovery({
             disabled={state.running || loading}
           >
             <RefreshCw size={14} className={state.running ? "spin" : ""} />
-            {state.running ? "Scanning..." : "Scan Sources"}
+            {state.running ? t("discovery", "scanning") : t("discovery", "scanSources")}
           </button>
         </div>
       </div>
 
       <div className="discovery-sources">
-        <span className="disc-source-label">Sources:</span>
+        <span className="disc-source-label">{t("discovery", "sourcesLabel")}</span>
         {["eGP Bangladesh", "World Bank", "UNGM", "UNDP"].map((s) => (
           <button
             key={s}
@@ -160,7 +162,7 @@ export default function TenderDiscovery({
         <Search size={14} className="disc-search-icon" />
         <input
           className="disc-search-input"
-          placeholder="Search discovered tenders..."
+          placeholder={t("discovery", "searchPlaceholder")}
           value={search}
           onChange={(e) => {
             setSearch(e.target.value);
@@ -178,17 +180,15 @@ export default function TenderDiscovery({
       {loading && items.length === 0 ? (
         <div className="discovery-loading">
           <div className="spinner-ring" />
-          <span>Loading opportunities from eGP Bangladesh, World Bank, UNGM, UNDP...</span>
+          <span>{t("discovery", "loadingOpportunities")}</span>
         </div>
       ) : items.length === 0 ? (
         <div className="discovery-empty">
           <Globe size={32} className="disc-empty-icon" />
-          <div className="disc-empty-title">No tenders discovered yet</div>
-          <div className="disc-empty-sub">
-            Click "Scan Sources" to fetch live procurement opportunities from eGP Bangladesh, World Bank, UNGM, and UNDP.
-          </div>
+          <div className="disc-empty-title">{t("discovery", "emptyTitle")}</div>
+          <div className="disc-empty-sub">{t("discovery", "emptySub")}</div>
           <button className="disc-scan-btn" onClick={triggerRefresh}>
-            <RefreshCw size={14} /> Start Discovery
+            <RefreshCw size={14} /> {t("discovery", "startDiscovery")}
           </button>
         </div>
       ) : (
@@ -211,7 +211,9 @@ export default function TenderDiscovery({
                   {days !== null && (
                     <span className={`disc-deadline ${days <= 3 ? "urgent" : days <= 7 ? "soon" : ""}`}>
                       <Calendar size={11} />
-                      {days < 0 ? `${Math.abs(days)}d ago` : `${days}d left`}
+                      {days < 0
+                        ? t("discovery", "daysAgo", { n: Math.abs(days) })
+                        : t("discovery", "daysLeft", { n: days })}
                     </span>
                   )}
                 </div>
@@ -223,7 +225,7 @@ export default function TenderDiscovery({
                 )}
 
                 {item.estimated_value && (
-                  <div className="disc-item-value">Est. Value: {item.estimated_value}</div>
+                  <div className="disc-item-value">{t("discovery", "estValue", { value: item.estimated_value })}</div>
                 )}
 
                 <div className="disc-item-footer">
@@ -235,7 +237,7 @@ export default function TenderDiscovery({
                       rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <ExternalLink size={12} /> View Source
+                      <ExternalLink size={12} /> {t("discovery", "viewSource")}
                     </a>
                   )}
                   <button
@@ -244,11 +246,11 @@ export default function TenderDiscovery({
                     onClick={() => importTender(item.id)}
                   >
                     {importing === item.id ? (
-                      <><RefreshCw size={12} className="spin" /> Importing...</>
+                      <><RefreshCw size={12} className="spin" /> {t("discovery", "importing")}</>
                     ) : isImported ? (
-                      <><Download size={12} /> Imported</>
+                      <><Download size={12} /> {t("discovery", "imported")}</>
                     ) : (
-                      <><Download size={12} /> Add to Library</>
+                      <><Download size={12} /> {t("discovery", "addToLibrary")}</>
                     )}
                   </button>
                 </div>
