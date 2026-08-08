@@ -481,6 +481,28 @@ const en = {
     saving: "Saving...",
     saveButton: "Save Knowledge Base",
   },
+  resetPassword: {
+    heading: "Reset your password",
+    passwordTooShort: "Password must be at least 8 characters.",
+    passwordsMismatch: "Passwords do not match.",
+    resetFailed: "Could not reset password.",
+    missingLink: "Missing or invalid reset link. Request a new one from the login page.",
+    updatedNotice: "Password updated. You can now log in.",
+    goToLogin: "Go to login",
+    newPasswordLabel: "New password",
+    confirmPasswordLabel: "Confirm password",
+    resetButton: "Reset password",
+  },
+  verifyEmail: {
+    heading: "Email verification",
+    verifying: "Verifying your email…",
+    missingToken: "Missing verification token.",
+    verificationFailed: "Verification failed.",
+    verifiedNotice: "Your email is verified.",
+    goToLogin: "Go to login",
+    invalidOrExpired: "This verification link is invalid or has expired.",
+    backToLogin: "Back to login",
+  },
 };
 
 type Dict = typeof en;
@@ -955,6 +977,28 @@ const bn: Dict = {
     addCertification: "সার্টিফিকেশন যোগ করুন",
     saving: "সংরক্ষণ করা হচ্ছে...",
     saveButton: "নলেজ বেস সংরক্ষণ করুন",
+  },
+  resetPassword: {
+    heading: "আপনার পাসওয়ার্ড রিসেট করুন",
+    passwordTooShort: "পাসওয়ার্ড কমপক্ষে ৮ অক্ষরের হতে হবে।",
+    passwordsMismatch: "পাসওয়ার্ড মিলছে না।",
+    resetFailed: "পাসওয়ার্ড রিসেট করা যায়নি।",
+    missingLink: "রিসেট লিংক অনুপস্থিত বা অবৈধ। লগইন পৃষ্ঠা থেকে একটি নতুন লিংক অনুরোধ করুন।",
+    updatedNotice: "পাসওয়ার্ড আপডেট হয়েছে। আপনি এখন লগইন করতে পারেন।",
+    goToLogin: "লগইনে যান",
+    newPasswordLabel: "নতুন পাসওয়ার্ড",
+    confirmPasswordLabel: "পাসওয়ার্ড নিশ্চিত করুন",
+    resetButton: "পাসওয়ার্ড রিসেট করুন",
+  },
+  verifyEmail: {
+    heading: "ইমেইল যাচাইকরণ",
+    verifying: "আপনার ইমেইল যাচাই করা হচ্ছে…",
+    missingToken: "যাচাইকরণ টোকেন অনুপস্থিত।",
+    verificationFailed: "যাচাইকরণ ব্যর্থ হয়েছে।",
+    verifiedNotice: "আপনার ইমেইল যাচাই করা হয়েছে।",
+    goToLogin: "লগইনে যান",
+    invalidOrExpired: "এই যাচাইকরণ লিংকটি অবৈধ অথবা মেয়াদ শেষ হয়ে গেছে।",
+    backToLogin: "লগইনে ফিরে যান",
   },
 };
 

@@ -4,8 +4,11 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { FileSearch, ShieldCheck } from "lucide-react";
 import { apiRequest } from "../api";
+import { useLanguage } from "../i18n/LanguageContext";
+import { LanguageToggle } from "../components/LanguageToggle";
 
 export default function ResetPasswordPage() {
+  const { t } = useLanguage();
   const [token, setToken] = useState<string | null>(null);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -20,11 +23,11 @@ export default function ResetPasswordPage() {
   async function resetPassword() {
     setError("");
     if (password.length < 8) {
-      setError("Password must be at least 8 characters.");
+      setError(t("resetPassword", "passwordTooShort"));
       return;
     }
     if (password !== confirm) {
-      setError("Passwords do not match.");
+      setError(t("resetPassword", "passwordsMismatch"));
       return;
     }
     setLoading(true);
@@ -36,7 +39,7 @@ export default function ResetPasswordPage() {
       });
       setDone(true);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Could not reset password.");
+      setError(err instanceof Error ? err.message : t("resetPassword", "resetFailed"));
     } finally {
       setLoading(false);
     }
@@ -49,26 +52,28 @@ export default function ResetPasswordPage() {
           <FileSearch size={28} />
         </div>
         <p className="eyebrow">TenderOS AI</p>
-        <h1>Reset your password</h1>
+        <h1>{t("resetPassword", "heading")}</h1>
       </section>
 
       <section className="auth-panel">
+        <LanguageToggle />
+
         {!token ? (
-          <p className="notice error">Missing or invalid reset link. Request a new one from the login page.</p>
+          <p className="notice error">{t("resetPassword", "missingLink")}</p>
         ) : done ? (
           <>
             <p className="notice">
               <ShieldCheck size={18} style={{ verticalAlign: "-3px", marginRight: 6 }} />
-              Password updated. You can now log in.
+              {t("resetPassword", "updatedNotice")}
             </p>
             <Link href="/" className="primary full-button" style={{ textAlign: "center" }}>
-              Go to login
+              {t("resetPassword", "goToLogin")}
             </Link>
           </>
         ) : (
           <>
             <label>
-              New password
+              {t("resetPassword", "newPasswordLabel")}
               <input
                 type="password"
                 value={password}
@@ -78,7 +83,7 @@ export default function ResetPasswordPage() {
               />
             </label>
             <label>
-              Confirm password
+              {t("resetPassword", "confirmPasswordLabel")}
               <input
                 type="password"
                 value={confirm}
@@ -88,7 +93,7 @@ export default function ResetPasswordPage() {
             </label>
             {error && <p className="notice error">{error}</p>}
             <button className="primary full-button" onClick={resetPassword} disabled={loading}>
-              {loading ? "Please wait..." : "Reset password"}
+              {loading ? t("common", "pleaseWait") : t("resetPassword", "resetButton")}
             </button>
           </>
         )}
