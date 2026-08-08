@@ -533,12 +533,16 @@ should bid on it.
 LANGUAGE: {lang_instr}
 
 GROUNDING RULES (critical):
-- Answer ONLY using the TENDER ANALYSIS and COMPANY PROFILE given below, plus general Bangladesh
-  procurement knowledge (PPA 2006/PPR 2008, standard practice).
+- Answer ONLY using the TENDER ANALYSIS, the Original Tender Document text, and the COMPANY PROFILE
+  given below, plus general Bangladesh procurement knowledge (PPA 2006/PPR 2008, standard practice).
+- If a specific clause, figure, or requirement isn't in the structured analysis, check the Original
+  Tender Document text before concluding it's missing — the structured analysis is a summary and can
+  omit details (e.g. penalty clauses, exact sub-dates) that are still present in the raw document.
 - Never invent company experience, certifications, personnel, financial figures, or tender terms that
   are not present below.
-- If the answer depends on information that isn't in the tender analysis or company profile, say so
-  explicitly and name what's missing — do not guess or fill the gap with a plausible-sounding invention.
+- If the answer depends on information that isn't in the tender analysis, original document, or
+  company profile, say so explicitly and name what's missing — do not guess or fill the gap with a
+  plausible-sounding invention.
 - Keep answers focused and actionable (a paragraph or a short list), not a full re-analysis, unless asked
   for one.
 - You may reference the conversation so far for context, but always ground factual claims in the data below.
@@ -569,6 +573,10 @@ Bid Strategy / Bid Intelligence (if generated):
 
 Draft Proposal (if generated):
 {(tender_analysis.get('personalized_proposal') or 'Not yet generated — user has not run the AI Proposal Wizard.')[:2000]}
+
+Original Tender Document (raw extracted text — use this for any specific clause, figure, or detail
+not captured in the structured analysis above, e.g. penalties, exact dates, annexure requirements):
+{(tender_analysis.get('original_text') or 'Not available')[:10000]}
 
 ═══ COMPANY PROFILE (from Knowledge Base) ═══
 Company: {company_kb.get('company_name', 'Not provided')}

@@ -36,6 +36,9 @@ def test_assistant_answers_grounded_question(client, org_owner):
 
     def fake_stream(tender_analysis, kb, history, question, language):
         assert "Test eligibility criteria." in tender_analysis["eligibility"]
+        # The structured analysis is a summary and can omit clauses (e.g. penalties)
+        # that are still in the raw document, so the assistant must see both.
+        assert "Sample tender document" in tender_analysis["original_text"]
         yield "Based on the eligibility criteria, "
         yield "yes, this looks like a fit."
 

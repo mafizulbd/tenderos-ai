@@ -749,6 +749,7 @@ async def ask_assistant(
         "bid_recommendation": tender.bid_recommendation,
         "bid_strategy": tender.bid_strategy,
         "personalized_proposal": tender.personalized_proposal,
+        "original_text": tender.original_text,
     }
 
     kb = _get_knowledge_base(current_user)
