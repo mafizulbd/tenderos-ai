@@ -10,7 +10,7 @@ import { apiRequest } from "../api";
 import { useLanguage } from "../i18n/LanguageContext";
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
-  const { token, user, organization, subscription, loadTenders, loadSubscription, logout } = useApp();
+  const { ready, token, user, organization, subscription, loadTenders, loadSubscription, logout } = useApp();
   const { t } = useLanguage();
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
@@ -18,10 +18,18 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const [bannerDismissed, setBannerDismissed] = useState(false);
 
   useEffect(() => {
-    if (!token || !user) router.replace("/");
-  }, [token, user, router]);
+    // Wait for AppContext to finish reading the token from localStorage before
+    // deciding there's no session — otherwise this fires on every hard
+    // navigation to a /dashboard/* sub-route (token starts "" on first paint),
+    // bouncing through "/" and back to the bare "/dashboard" overview,
+    // dropping the sub-route the user actually asked for.
+    if (ready && !token) router.replace("/");
+  }, [ready, token, router]);
 
-  if (!token || !user) return null;
+  if (!ready || !token) return null;
+  // Token exists but the account hasn't loaded yet (or failed and is about to
+  // log out via AppContext) — render nothing rather than redirecting away.
+  if (!user) return null;
 
   async function resendVerification() {
     setResendState("sending");

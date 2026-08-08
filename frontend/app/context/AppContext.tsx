@@ -5,6 +5,7 @@ import { apiRequest } from "../api";
 import type { Organization, Subscription, TenderDetail, TenderSummary, User } from "../types";
 
 type AppContextValue = {
+  ready: boolean;
   token: string;
   user: User | null;
   organization: Organization | null;
@@ -27,6 +28,7 @@ type AppContextValue = {
 const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
+  const [ready, setReady] = useState(false);
   const [token, setToken] = useState("");
   const [user, setUser] = useState<User | null>(null);
   const [organization, setOrganization] = useState<Organization | null>(null);
@@ -40,6 +42,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (saved) setToken(saved);
     const invite = new URLSearchParams(window.location.search).get("invite");
     if (invite) setInviteToken(invite);
+    setReady(true);
   }, []);
 
   useEffect(() => {
@@ -127,6 +130,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   return (
     <AppContext.Provider
       value={{
+        ready,
         token,
         user,
         organization,
