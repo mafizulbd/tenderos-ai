@@ -141,6 +141,17 @@ class KnowledgeBaseUpdate(BaseModel):
     knowledge_base: dict = {}
 
 
+class AssistantChatTurn(BaseModel):
+    role: str  # "user" | "assistant"
+    content: str
+
+
+class AssistantChatRequest(BaseModel):
+    question: str
+    history: list[AssistantChatTurn] = []
+    language: str = "english"
+
+
 class ProposalWizardRequest(BaseModel):
     language: str = "english"
     bid_price: str = ""

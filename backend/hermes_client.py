@@ -491,6 +491,118 @@ def stream_bid_strategy(tender_analysis: dict, company_kb: dict, language: str =
             yield chunk.text
 
 
+def _build_assistant_prompt(
+    tender_analysis: dict,
+    company_kb: dict,
+    history: list[dict],
+    question: str,
+    language: str = "english",
+) -> str:
+    lang_instr = _LANG_INSTRUCTION.get(language, _LANG_INSTRUCTION["english"])
+
+    projects_text = ""
+    for i, p in enumerate(company_kb.get("past_projects", []), 1):
+        projects_text += (
+            f"\n  {i}. {p.get('name','—')} | Client: {p.get('client','—')} "
+            f"| Value: {p.get('value','—')} | Year: {p.get('year','—')} | Category: {p.get('category','—')}"
+        )
+
+    team_text = ""
+    for m in company_kb.get("technical_team", []):
+        team_text += f"\n  - {m.get('name','—')} ({m.get('role','—')}) — {m.get('experience','—')} exp."
+
+    certs_text = ""
+    for c in company_kb.get("certifications", []):
+        certs_text += f"\n  - {c.get('name','—')} | Expires: {c.get('expiry','—')}"
+
+    equipment_text = ""
+    for e in company_kb.get("equipment", []):
+        equipment_text += f"\n  - {e.get('name','—')} × {e.get('quantity',1)}"
+
+    history_text = ""
+    for turn in history[-10:]:
+        role = "User" if turn.get("role") == "user" else "Assistant"
+        history_text += f"\n{role}: {(turn.get('content') or '')[:1500]}"
+
+    return f"""You are the TenderOS AI Procurement Assistant — a Bangladesh tender expert embedded in this
+specific tender's workspace. You help the user understand this one tender and whether/how their company
+should bid on it.
+
+{_BD_CONTEXT}
+
+LANGUAGE: {lang_instr}
+
+GROUNDING RULES (critical):
+- Answer ONLY using the TENDER ANALYSIS and COMPANY PROFILE given below, plus general Bangladesh
+  procurement knowledge (PPA 2006/PPR 2008, standard practice).
+- Never invent company experience, certifications, personnel, financial figures, or tender terms that
+  are not present below.
+- If the answer depends on information that isn't in the tender analysis or company profile, say so
+  explicitly and name what's missing — do not guess or fill the gap with a plausible-sounding invention.
+- Keep answers focused and actionable (a paragraph or a short list), not a full re-analysis, unless asked
+  for one.
+- You may reference the conversation so far for context, but always ground factual claims in the data below.
+
+═══ TENDER ANALYSIS ═══
+Title/Summary: {(tender_analysis.get('summary') or 'Not yet analyzed')[:1200]}
+
+Eligibility Requirements:
+{(tender_analysis.get('eligibility') or 'Not available')[:800]}
+
+Financial Requirements:
+{(tender_analysis.get('financial_requirements') or 'Not available')[:600]}
+
+Required Documents:
+{(tender_analysis.get('required_documents') or 'Not available')[:600]}
+
+Compliance Matrix:
+{(tender_analysis.get('compliance_matrix') or 'Not available')[:800]}
+
+Risk Analysis:
+{(tender_analysis.get('risk_analysis') or 'Not available')[:600]}
+
+Bid Recommendation (from initial analysis):
+{(tender_analysis.get('bid_recommendation') or 'Not available')[:500]}
+
+Bid Strategy / Bid Intelligence (if generated):
+{(tender_analysis.get('bid_strategy') or 'Not yet generated — user has not run the Bid Strategy Advisor.')[:1500]}
+
+Draft Proposal (if generated):
+{(tender_analysis.get('personalized_proposal') or 'Not yet generated — user has not run the AI Proposal Wizard.')[:2000]}
+
+═══ COMPANY PROFILE (from Knowledge Base) ═══
+Company: {company_kb.get('company_name', 'Not provided')}
+TIN: {company_kb.get('tin', 'Not provided')} | BIN: {company_kb.get('bin', 'Not provided')}
+Trade License: {company_kb.get('trade_license', 'Not provided')} (Expires: {company_kb.get('trade_license_expiry', 'Not provided')})
+Annual Turnover: {', '.join(f"{t.get('year','?')}: {t.get('amount','?')}" for t in company_kb.get('annual_turnover', []) if t.get('amount')) or 'Not specified'}
+Certifications:{certs_text or ' None listed'}
+Past Projects:{projects_text or ' None added to Knowledge Base'}
+Technical Team:{team_text or ' Not specified'}
+Equipment:{equipment_text or ' Not specified'}
+
+═══ CONVERSATION SO FAR ═══{history_text or ' (this is the first question)'}
+
+═══ CURRENT QUESTION ═══
+{question}
+
+Answer the current question now, grounded strictly in the information above."""
+
+
+def stream_assistant_reply(
+    tender_analysis: dict,
+    company_kb: dict,
+    history: list[dict],
+    question: str,
+    language: str = "english",
+):
+    """Stream a grounded answer from the AI Procurement Assistant for one tender."""
+    prompt = _build_assistant_prompt(tender_analysis, company_kb, history, question, language)
+    client = _client()
+    for chunk in client.models.generate_content_stream(model=_MODEL, contents=prompt):
+        if getattr(chunk, "text", None):
+            yield chunk.text
+
+
 def stream_personalized_proposal(
     tender_analysis: dict,
     company_kb: dict,

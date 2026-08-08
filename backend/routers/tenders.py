@@ -19,11 +19,11 @@ from deps import (
     get_tender_response, increment_usage, limiter,
 )
 from hermes_client import (
-    analyze_with_gemini, parse_gemini_response, stream_bid_strategy,
-    stream_personalized_proposal, stream_with_gemini,
+    analyze_with_gemini, parse_gemini_response, stream_assistant_reply,
+    stream_bid_strategy, stream_personalized_proposal, stream_with_gemini,
 )
 from models import OrgMembership, Tender, User
-from schemas import ProposalWizardRequest, ReanalyzeRequest, TenderUpdate
+from schemas import AssistantChatRequest, ProposalWizardRequest, ReanalyzeRequest, TenderUpdate
 
 router = APIRouter()
 
@@ -702,6 +702,90 @@ async def generate_bid_strategy(
         finally:
             new_db.close()
 
+        yield _sse({"type": "done"})
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+# ---------------------------------------------------------------------------
+# AI Procurement Assistant
+# ---------------------------------------------------------------------------
+
+@router.post("/tenders/{tender_id}/assistant")
+@limiter.limit("15/minute")
+async def ask_assistant(
+    request: Request,
+    tender_id: int,
+    payload: AssistantChatRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    membership: OrgMembership = Depends(get_current_membership),
+):
+    """Grounded Q&A about one tender — not a general chatbot. Answers only from
+    this tender's analysis + the org's knowledge base; conversation history is
+    passed in by the client each call rather than persisted server-side."""
+    tender = db.query(Tender).filter(
+        Tender.id == tender_id, Tender.organization_id == membership.organization_id
+    ).first()
+    if not tender:
+        raise HTTPException(status_code=404, detail="Tender not found.")
+
+    if not payload.question.strip():
+        raise HTTPException(status_code=400, detail="Question cannot be empty.")
+
+    org = _get_org(membership.organization_id, db)
+
+    tender_analysis = {
+        "summary": tender.summary,
+        "eligibility": tender.eligibility,
+        "financial_requirements": tender.financial_requirements,
+        "required_documents": tender.required_documents,
+        "compliance_matrix": tender.compliance_matrix,
+        "risk_analysis": tender.risk_analysis,
+        "bid_recommendation": tender.bid_recommendation,
+        "bid_strategy": tender.bid_strategy,
+        "personalized_proposal": tender.personalized_proposal,
+    }
+
+    kb = _get_knowledge_base(current_user)
+    kb.setdefault("company_name", org.name or "")
+
+    history = [turn.model_dump() for turn in payload.history]
+    question = payload.question
+    language = payload.language
+
+    async def generate():
+        loop = asyncio.get_running_loop()
+        queue: asyncio.Queue = asyncio.Queue()
+
+        def produce():
+            try:
+                for chunk in stream_assistant_reply(tender_analysis, kb, history, question, language):
+                    asyncio.run_coroutine_threadsafe(queue.put(("chunk", chunk)), loop).result()
+            except Exception as exc:
+                asyncio.run_coroutine_threadsafe(queue.put(("error", str(exc))), loop).result()
+            finally:
+                asyncio.run_coroutine_threadsafe(queue.put(("done", None)), loop).result()
+
+        thread = threading.Thread(target=produce, daemon=True)
+        thread.start()
+
+        while True:
+            kind, data = await queue.get()
+            if kind == "chunk":
+                yield _sse({"type": "chunk", "text": data})
+            elif kind == "error":
+                yield _sse({"type": "error", "detail": data})
+                thread.join(timeout=5)
+                return
+            elif kind == "done":
+                break
+
+        thread.join(timeout=5)
         yield _sse({"type": "done"})
 
     return StreamingResponse(
