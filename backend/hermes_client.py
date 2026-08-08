@@ -528,6 +528,36 @@ WARNINGS:
 """
 
 
+def ocr_pdf_with_gemini(content: bytes, max_pages: int = 15) -> str:
+    """OCR a scanned PDF (no embedded text layer) via Gemini vision.
+
+    Fallback for `deps.extract_text_from_file` when PyMuPDF's text-layer extraction
+    comes back empty/near-empty. Renders pages to images with PyMuPDF (no external
+    OCR engine/system dependency needed) and has Gemini transcribe them directly —
+    also handles Bangla script, which a plain tesseract setup would need extra
+    language packs for.
+    """
+    import fitz  # PyMuPDF
+
+    doc = fitz.open(stream=content, filetype="pdf")
+    pages = list(doc)[:max_pages]
+
+    parts: list = [
+        "Transcribe ALL visible text from these scanned document pages, in reading "
+        "order, exactly as written (English or Bangla). Do not summarize, translate, "
+        "or omit anything. Output plain text only, with '--- Page N ---' separators "
+        "between pages."
+    ]
+    for i, page in enumerate(pages, start=1):
+        pix = page.get_pixmap(dpi=200)
+        parts.append(f"--- Page {i} ---")
+        parts.append(types.Part.from_bytes(data=pix.tobytes("png"), mime_type="image/png"))
+
+    client = _client()
+    response = client.models.generate_content(model=_MODEL, contents=parts)
+    return response.text if hasattr(response, "text") else ""
+
+
 def validate_document(file_bytes: bytes, mime_type: str, filename: str) -> dict:
     """Use Gemini to extract and validate a business document."""
     # For images: pass directly. For PDFs: extract text first.

@@ -7,6 +7,7 @@ and the routers import from here to avoid circular imports.
 import hashlib
 import hmac
 import json
+import logging
 import os
 import re
 import secrets
@@ -23,6 +24,8 @@ from models import (
     Comment, Contract, Notification, OrgMembership, Organization,
     Task as TaskModel, Tender, User, Vendor,
 )
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -260,9 +263,23 @@ def extract_text_from_file(file_name: str, content: bytes) -> str:
         try:
             import fitz
             pdf = fitz.open(stream=content, filetype="pdf")
-            return "".join(page.get_text() for page in pdf)
+            text = "".join(page.get_text() for page in pdf)
         except Exception as exc:
             raise HTTPException(status_code=400, detail=f"Could not read PDF: {exc}")
+
+        # Scanned PDFs have no embedded text layer, so PyMuPDF comes back
+        # near-empty here. Fall back to Gemini vision OCR rather than silently
+        # sending a blank document into analysis.
+        if len(text.strip()) < 40 * max(1, pdf.page_count):
+            try:
+                from hermes_client import ocr_pdf_with_gemini
+                ocr_text = ocr_pdf_with_gemini(content)
+                if len(ocr_text.strip()) > len(text.strip()):
+                    return ocr_text
+            except Exception as exc:
+                logger.warning("PDF OCR fallback failed: %s", exc)
+
+        return text
 
     if ext == ".docx":
         try:
