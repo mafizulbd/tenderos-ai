@@ -4,14 +4,21 @@ import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, Calendar } from "lucide-react";
 import { apiRequest } from "../api";
 import type { CalendarEvent, Urgency } from "../types";
+import { useLanguage } from "../i18n/LanguageContext";
+import { translations } from "../i18n/translations";
 
 type Props = {
   token: string;
   onSelectEvent: (event: CalendarEvent) => void;
 };
 
-const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-const DAYS   = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+type CalendarKey = keyof (typeof translations)["en"]["calendarPage"];
+
+const MONTH_KEYS: CalendarKey[] = [
+  "month0", "month1", "month2", "month3", "month4", "month5",
+  "month6", "month7", "month8", "month9", "month10", "month11",
+];
+const DAY_KEYS: CalendarKey[] = ["day0", "day1", "day2", "day3", "day4", "day5", "day6"];
 
 const URGENCY_COLOR: Record<Urgency, string> = {
   critical: "#dc2626",
@@ -19,10 +26,10 @@ const URGENCY_COLOR: Record<Urgency, string> = {
   info: "#1f6fc9",
 };
 
-const TYPE_LABEL: Record<CalendarEvent["type"], string> = {
-  tender_deadline: "Tender deadline",
-  contract_end: "Contract ends",
-  task_due: "Task due",
+const TYPE_LABEL_KEY: Record<CalendarEvent["type"], CalendarKey> = {
+  tender_deadline: "typeTenderDeadline",
+  contract_end: "typeContractEnd",
+  task_due: "typeTaskDue",
 };
 
 function sameDay(a: Date, b: Date) {
@@ -30,6 +37,7 @@ function sameDay(a: Date, b: Date) {
 }
 
 export function UnifiedCalendar({ token, onSelectEvent }: Props) {
+  const { t } = useLanguage();
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
@@ -93,8 +101,8 @@ export function UnifiedCalendar({ token, onSelectEvent }: Props) {
     <section className="surface calendar-panel">
       <div className="panel-heading">
         <div>
-          <p className="eyebrow">Unified calendar</p>
-          <h2>Deadlines & Milestones</h2>
+          <p className="eyebrow">{t("calendarPage", "eyebrow")}</p>
+          <h2>{t("calendarPage", "heading")}</h2>
         </div>
         <Calendar size={20} />
       </div>
@@ -103,13 +111,13 @@ export function UnifiedCalendar({ token, onSelectEvent }: Props) {
         <div className="cal-grid-wrap">
           <div className="cal-nav">
             <button className="icon-btn" onClick={prevMonth}><ChevronLeft size={16} /></button>
-            <strong>{MONTHS[month]} {year}</strong>
+            <strong>{t("calendarPage", MONTH_KEYS[month])} {year}</strong>
             <button className="icon-btn" onClick={nextMonth}><ChevronRight size={16} /></button>
           </div>
 
           <div className="cal-grid">
-            {DAYS.map((d) => (
-              <div key={d} className="cal-day-name">{d}</div>
+            {DAY_KEYS.map((dKey) => (
+              <div key={dKey} className="cal-day-name">{t("calendarPage", dKey)}</div>
             ))}
 
             {cells.map((day, i) => {
@@ -139,16 +147,16 @@ export function UnifiedCalendar({ token, onSelectEvent }: Props) {
           </div>
 
           <div className="cal-legend">
-            <span><span className="cal-dot" style={{ background: URGENCY_COLOR.critical, display: "inline-block" }} /> Critical</span>
-            <span><span className="cal-dot" style={{ background: URGENCY_COLOR.warning, display: "inline-block" }} /> Warning</span>
-            <span><span className="cal-dot" style={{ background: URGENCY_COLOR.info, display: "inline-block" }} /> Info</span>
+            <span><span className="cal-dot" style={{ background: URGENCY_COLOR.critical, display: "inline-block" }} /> {t("calendarPage", "legendCritical")}</span>
+            <span><span className="cal-dot" style={{ background: URGENCY_COLOR.warning, display: "inline-block" }} /> {t("calendarPage", "legendWarning")}</span>
+            <span><span className="cal-dot" style={{ background: URGENCY_COLOR.info, display: "inline-block" }} /> {t("calendarPage", "legendInfo")}</span>
           </div>
         </div>
 
         <div className="cal-upcoming">
-          <h3 style={{ marginBottom: 10, fontSize: 14 }}>Upcoming</h3>
+          <h3 style={{ marginBottom: 10, fontSize: 14 }}>{t("calendarPage", "upcomingHeading")}</h3>
           {upcoming.length === 0 && (
-            <p className="muted" style={{ fontSize: 13 }}>Nothing on the calendar yet.</p>
+            <p className="muted" style={{ fontSize: 13 }}>{t("calendarPage", "nothingYet")}</p>
           )}
           {upcoming.map((e, i) => {
             const d = new Date(e.date);
@@ -157,12 +165,12 @@ export function UnifiedCalendar({ token, onSelectEvent }: Props) {
               <button key={i} className="upcoming-row" onClick={() => onSelectEvent(e)}>
                 <div className={`upcoming-days ${e.urgency === "critical" ? "urgent" : ""}`}>
                   <strong>{daysLeft}</strong>
-                  <span>day{daysLeft !== 1 ? "s" : ""}</span>
+                  <span>{t("calendarPage", daysLeft !== 1 ? "dayPlural" : "daySingular")}</span>
                 </div>
                 <div className="upcoming-info">
                   <strong className="upcoming-title">{e.title}</strong>
                   <span className="muted" style={{ fontSize: 12 }}>
-                    {TYPE_LABEL[e.type]} · {d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                    {t("calendarPage", TYPE_LABEL_KEY[e.type])} · {d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
                   </span>
                 </div>
               </button>

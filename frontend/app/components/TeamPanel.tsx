@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { Copy, Mail, Save, Trash2, Users } from "lucide-react";
 import { apiRequest } from "../api";
 import type { Organization, OrgInvite, OrgMember, OrgRole } from "../types";
+import { useLanguage } from "../i18n/LanguageContext";
+import { translations } from "../i18n/translations";
 
 type Props = {
   token: string;
@@ -11,13 +13,16 @@ type Props = {
   onOrganizationUpdated: (org: Organization) => void;
 };
 
-const ROLE_LABELS: Record<OrgRole, string> = {
-  owner: "Owner",
-  admin: "Admin",
-  member: "Member",
+type TeamKey = keyof (typeof translations)["en"]["team"];
+
+const ROLE_LABEL_KEY: Record<OrgRole, TeamKey> = {
+  owner: "roleOwner",
+  admin: "roleAdmin",
+  member: "roleMember",
 };
 
 export function TeamPanel({ token, organization, onOrganizationUpdated }: Props) {
+  const { t } = useLanguage();
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [invites, setInvites] = useState<OrgInvite[]>([]);
   const [orgName, setOrgName] = useState(organization?.name ?? "");
@@ -73,9 +78,9 @@ export function TeamPanel({ token, organization, onOrganizationUpdated }: Props)
         body: JSON.stringify({ name: orgName.trim() }),
       }, token);
       onOrganizationUpdated({ ...updated, role: organization?.role ?? updated.role });
-      notify("Organization name saved.");
+      notify(t("team", "orgNameSaved"));
     } catch (err: unknown) {
-      notify(err instanceof Error ? err.message : "Could not save organization name.", true);
+      notify(err instanceof Error ? err.message : t("team", "orgNameSaveFailed"), true);
     } finally {
       setLoading(false);
     }
@@ -92,10 +97,10 @@ export function TeamPanel({ token, organization, onOrganizationUpdated }: Props)
         body: JSON.stringify({ email, role: inviteRole }),
       }, token);
       setInviteEmail("");
-      notify(`Invite created for ${email}.`);
+      notify(t("team", "inviteCreated", { email }));
       await loadInvites();
     } catch (err: unknown) {
-      notify(err instanceof Error ? err.message : "Could not create invite.", true);
+      notify(err instanceof Error ? err.message : t("team", "inviteFailed"), true);
     } finally {
       setLoading(false);
     }
@@ -106,7 +111,7 @@ export function TeamPanel({ token, organization, onOrganizationUpdated }: Props)
       await apiRequest(`/orgs/me/invites/${id}`, { method: "DELETE" }, token);
       await loadInvites();
     } catch (err: unknown) {
-      notify(err instanceof Error ? err.message : "Could not revoke invite.", true);
+      notify(err instanceof Error ? err.message : t("team", "revokeFailed"), true);
     }
   }
 
@@ -119,7 +124,7 @@ export function TeamPanel({ token, organization, onOrganizationUpdated }: Props)
       }, token);
       await loadMembers();
     } catch (err: unknown) {
-      notify(err instanceof Error ? err.message : "Could not update role.", true);
+      notify(err instanceof Error ? err.message : t("team", "roleUpdateFailed"), true);
     }
   }
 
@@ -128,24 +133,24 @@ export function TeamPanel({ token, organization, onOrganizationUpdated }: Props)
       await apiRequest(`/orgs/me/members/${userId}`, { method: "DELETE" }, token);
       await loadMembers();
     } catch (err: unknown) {
-      notify(err instanceof Error ? err.message : "Could not remove member.", true);
+      notify(err instanceof Error ? err.message : t("team", "removeMemberFailed"), true);
     }
   }
 
   function copyInviteLink(inviteToken: string) {
     const link = `${window.location.origin}/?invite=${inviteToken}`;
     void navigator.clipboard.writeText(link);
-    notify("Invite link copied to clipboard.");
+    notify(t("team", "inviteLinkCopied"));
   }
 
   return (
     <section id="team" className="surface">
       <div className="panel-heading">
         <div>
-          <p className="eyebrow">Organization</p>
-          <h2>Team</h2>
+          <p className="eyebrow">{t("team", "eyebrow")}</p>
+          <h2>{t("team", "heading")}</h2>
           <p className="muted" style={{ marginTop: 4, fontSize: 13 }}>
-            Invite teammates to share tenders, bids, and reports.
+            {t("team", "subtitle")}
           </p>
         </div>
         <Users size={22} />
@@ -153,12 +158,12 @@ export function TeamPanel({ token, organization, onOrganizationUpdated }: Props)
 
       {isOwner && (
         <label>
-          Organization name
+          {t("team", "orgNameLabel")}
           <div className="field-row">
             <input value={orgName} onChange={(e) => setOrgName(e.target.value)} />
             <button onClick={saveOrgName} disabled={loading}>
               <Save size={16} />
-              Save
+              {t("team", "save")}
             </button>
           </div>
         </label>
@@ -166,7 +171,7 @@ export function TeamPanel({ token, organization, onOrganizationUpdated }: Props)
 
       <div className="kb-card">
         <div className="kb-card-header">
-          <strong>Members ({members.length})</strong>
+          <strong>{t("team", "membersHeading", { count: members.length })}</strong>
         </div>
         {members.map((m) => (
           <div key={m.user_id} className="field-row" style={{ alignItems: "center" }}>
@@ -179,11 +184,11 @@ export function TeamPanel({ token, organization, onOrganizationUpdated }: Props)
                 value={m.role}
                 onChange={(e) => changeRole(m.user_id, e.target.value as OrgRole)}
               >
-                <option value="admin">Admin</option>
-                <option value="member">Member</option>
+                <option value="admin">{t("team", "roleAdmin")}</option>
+                <option value="member">{t("team", "roleMember")}</option>
               </select>
             ) : (
-              <span className="plan-badge" style={{ background: "#64748b" }}>{ROLE_LABELS[m.role]}</span>
+              <span className="plan-badge" style={{ background: "#64748b" }}>{t("team", ROLE_LABEL_KEY[m.role])}</span>
             )}
             {canManage && m.role !== "owner" && (
               <button className="icon-btn danger" onClick={() => removeMember(m.user_id)}>
@@ -198,47 +203,47 @@ export function TeamPanel({ token, organization, onOrganizationUpdated }: Props)
         <>
           <div className="kb-card">
             <div className="kb-card-header">
-              <strong>Invite a teammate</strong>
+              <strong>{t("team", "inviteHeading")}</strong>
             </div>
             <div className="field-row">
               <label>
-                Email
+                {t("team", "emailLabel")}
                 <input
                   type="email"
                   value={inviteEmail}
                   onChange={(e) => setInviteEmail(e.target.value)}
-                  placeholder="teammate@company.com"
+                  placeholder={t("team", "emailPlaceholder")}
                 />
               </label>
               <label>
-                Role
+                {t("team", "roleLabel")}
                 <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value as OrgRole)}>
-                  <option value="admin">Admin</option>
-                  <option value="member">Member</option>
+                  <option value="admin">{t("team", "roleAdmin")}</option>
+                  <option value="member">{t("team", "roleMember")}</option>
                 </select>
               </label>
             </div>
             <button className="add-btn" onClick={sendInvite} disabled={loading}>
               <Mail size={15} />
-              Send invite
+              {t("team", "sendInvite")}
             </button>
           </div>
 
           {invites.length > 0 && (
             <div className="kb-card">
               <div className="kb-card-header">
-                <strong>Pending invites ({invites.length})</strong>
+                <strong>{t("team", "pendingInvitesHeading", { count: invites.length })}</strong>
               </div>
               {invites.map((i) => (
                 <div key={i.id} className="field-row" style={{ alignItems: "center" }}>
                   <div>
                     <strong>{i.email}</strong>
-                    <p className="muted" style={{ fontSize: 13 }}>{ROLE_LABELS[i.role]}</p>
+                    <p className="muted" style={{ fontSize: 13 }}>{t("team", ROLE_LABEL_KEY[i.role])}</p>
                   </div>
-                  <button className="icon-btn" onClick={() => copyInviteLink(i.token)} title="Copy invite link">
+                  <button className="icon-btn" onClick={() => copyInviteLink(i.token)} title={t("team", "copyInviteLinkTitle")}>
                     <Copy size={14} />
                   </button>
-                  <button className="icon-btn danger" onClick={() => revokeInvite(i.id)} title="Revoke invite">
+                  <button className="icon-btn danger" onClick={() => revokeInvite(i.id)} title={t("team", "revokeInviteTitle")}>
                     <Trash2 size={14} />
                   </button>
                 </div>
