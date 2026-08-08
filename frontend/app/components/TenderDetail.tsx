@@ -8,6 +8,7 @@ import { formatBytes, formatDate } from "../utils";
 import { Section } from "./Section";
 import { ProposalWizard } from "./ProposalWizard";
 import { BidStrategyPanel } from "./BidStrategyPanel";
+import { AssistantPanel } from "./AssistantPanel";
 import { ApprovalPanel } from "./ApprovalPanel";
 import { CommentsPanel } from "./CommentsPanel";
 import { TasksPanel } from "./TasksPanel";
@@ -390,6 +391,8 @@ export function TenderDetail({ tender, token, organization, currentUserId, onUpd
           </button>
         </section>
       )}
+
+      <AssistantPanel tenderId={tender.id} token={token} />
     </>
   );
 }

@@ -2494,3 +2494,117 @@ a:hover {
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
 }
+
+/* ---------- AI Procurement Assistant ---------- */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.assistant-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 120px;
+  max-height: 480px;
+  overflow-y: auto;
+  padding: 4px 2px;
+}
+
+.assistant-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+  padding: 24px 12px;
+  color: var(--muted);
+}
+
+.assistant-empty svg {
+  color: var(--blue);
+  margin-bottom: 4px;
+}
+
+.assistant-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.assistant-suggestion-chip {
+  border: 1px solid var(--line);
+  background: var(--surface-soft);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.assistant-suggestion-chip:hover {
+  border-color: var(--blue);
+  background: var(--blue-soft);
+}
+
+.assistant-message {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-width: 85%;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.assistant-message p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.assistant-message.user {
+  align-self: flex-end;
+  background: var(--blue-soft);
+  color: var(--blue-dark);
+}
+
+.assistant-message.assistant {
+  align-self: flex-start;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+}
+
+.assistant-message-role {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  opacity: 0.6;
+}
+
+.assistant-input-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.assistant-input-row input {
+  flex: 1;
+  margin-top: 0;
+}
+
+.assistant-input-row button {
+  white-space: nowrap;
+}
