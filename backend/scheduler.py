@@ -1,8 +1,10 @@
 """Background job scheduling.
 
-Currently just periodic AI Tender Discovery refresh, replacing the manual-click-only
-trigger with a recurring scan so the discovery pool stays fresh without user action.
-Disabled under TESTING (see main.py) to keep the test suite hermetic and fast.
+Two recurring jobs, both disabled under TESTING (see main.py) to keep the test
+suite hermetic and fast:
+- AI Tender Discovery refresh — replaces the manual-click-only scraper trigger.
+- Deadline reminders — SMS/WhatsApp for tenders with an approaching deadline
+  (best-effort no-op until TWILIO_* env vars are configured; see sms_client.py).
 """
 
 import logging
@@ -13,6 +15,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 logger = logging.getLogger(__name__)
 
 DISCOVERY_REFRESH_INTERVAL_HOURS = float(os.getenv("DISCOVERY_REFRESH_INTERVAL_HOURS", "6"))
+DEADLINE_REMINDER_INTERVAL_HOURS = float(os.getenv("DEADLINE_REMINDER_INTERVAL_HOURS", "24"))
 
 _scheduler: BackgroundScheduler | None = None
 
@@ -23,6 +26,14 @@ def _run_discovery_job() -> None:
     logger.info("Scheduled discovery refresh starting")
     run_discovery_sync()
     logger.info("Scheduled discovery refresh finished")
+
+
+def _run_deadline_reminders_job() -> None:
+    from routers.notifications import send_deadline_reminders
+
+    logger.info("Scheduled deadline reminder sweep starting")
+    sent = send_deadline_reminders()
+    logger.info("Scheduled deadline reminder sweep finished (%d sent)", sent)
 
 
 def start_scheduler() -> BackgroundScheduler:
@@ -40,8 +51,20 @@ def start_scheduler() -> BackgroundScheduler:
         coalesce=True,
         max_instances=1,
     )
+    _scheduler.add_job(
+        _run_deadline_reminders_job,
+        "interval",
+        hours=DEADLINE_REMINDER_INTERVAL_HOURS,
+        id="deadline_reminders",
+        next_run_time=None,
+        coalesce=True,
+        max_instances=1,
+    )
     _scheduler.start()
-    logger.info("Discovery scheduler started (every %sh)", DISCOVERY_REFRESH_INTERVAL_HOURS)
+    logger.info(
+        "Scheduler started: discovery every %sh, deadline reminders every %sh",
+        DISCOVERY_REFRESH_INTERVAL_HOURS, DEADLINE_REMINDER_INTERVAL_HOURS,
+    )
     return _scheduler
 
 

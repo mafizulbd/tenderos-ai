@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from database import SessionLocal
 from deps import _get_knowledge_base, get_current_membership, get_current_user, get_db
 from models import Contract, Notification, OrgMembership, Tender, User
 
@@ -130,6 +131,65 @@ def _computed_reminders(db: Session, current_user: User, membership: OrgMembersh
         pass
 
     return reminders
+
+
+def send_deadline_reminders() -> int:
+    """Daily scheduled job: SMS/WhatsApp the urgent deadline reminders to users
+    with a phone number on file (see scheduler.py). Best-effort — sms_client
+    no-ops per-message if Twilio isn't configured. Dedup via a persisted,
+    already-read "deadline_reminder_sent" Notification row so the same
+    tender isn't re-texted every time the job runs on the same day.
+    """
+    from sms_client import send_sms, send_whatsapp
+
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    db = SessionLocal()
+    sent = 0
+    try:
+        users = db.query(User).filter(User.phone.isnot(None), User.phone != "").all()
+        for user in users:
+            membership = (
+                db.query(OrgMembership)
+                .filter(OrgMembership.user_id == user.id)
+                .order_by(OrgMembership.id.asc())
+                .first()
+            )
+            if not membership:
+                continue
+
+            for r in _computed_reminders(db, user, membership):
+                if r["type"] != "deadline" or r["urgency"] not in ("critical", "warning"):
+                    continue
+
+                already_sent = db.query(Notification).filter(
+                    Notification.organization_id == membership.organization_id,
+                    Notification.user_id == user.id,
+                    Notification.type == "deadline_reminder_sent",
+                    Notification.entity_type == r["entity_type"],
+                    Notification.entity_id == r["entity_id"],
+                    Notification.created_at >= today_start,
+                ).first()
+                if already_sent:
+                    continue
+
+                send_sms(user.phone, r["message"])
+                send_whatsapp(user.phone, r["message"])
+                db.add(Notification(
+                    organization_id=membership.organization_id,
+                    user_id=user.id,
+                    type="deadline_reminder_sent",
+                    entity_type=r["entity_type"],
+                    entity_id=r["entity_id"],
+                    title=f"Reminder sent: {r['title']}",
+                    message=r["message"],
+                    urgency=r["urgency"],
+                    read_at=datetime.utcnow(),  # bookkeeping/audit trail, not an actionable unread item
+                ))
+                db.commit()
+                sent += 1
+    finally:
+        db.close()
+    return sent
 
 
 def _notification_response(n: Notification) -> dict:
