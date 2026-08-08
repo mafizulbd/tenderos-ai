@@ -178,3 +178,18 @@ app.include_router(documents.router)
 app.include_router(notifications.router)
 app.include_router(calendar.router)
 app.include_router(discovery.router)
+
+# ---------------------------------------------------------------------------
+# Background jobs
+# ---------------------------------------------------------------------------
+
+if not os.getenv("TESTING"):
+    import scheduler as _scheduler_module
+
+    @app.on_event("startup")
+    def _start_scheduler():
+        _scheduler_module.start_scheduler()
+
+    @app.on_event("shutdown")
+    def _stop_scheduler():
+        _scheduler_module.stop_scheduler()

@@ -90,6 +90,31 @@ def list_discovered(
     }
 
 
+def run_discovery_sync() -> None:
+    """Run all scrapers and sync results into the DB. Blocking — call off the request thread.
+
+    Shared by the manual `/discover/refresh` endpoint and the scheduled background job
+    (see `scheduler.py`), so both paths stay in lockstep with `_discovery_state`.
+    """
+    if _discovery_state["running"]:
+        return
+    _discovery_state["running"] = True
+    try:
+        notices = discovery_scrapers.run_all_scrapers()
+        fresh_db = SessionLocal()
+        try:
+            added = _sync_discovered(fresh_db, notices)
+            _discovery_state["count"] = added
+            _discovery_state["last_run"] = datetime.utcnow().isoformat()
+        finally:
+            fresh_db.close()
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("Discovery refresh failed: %s", exc)
+    finally:
+        _discovery_state["running"] = False
+
+
 @router.post("/discover/refresh")
 @limiter.limit("3/minute")
 async def refresh_discovery(
@@ -100,25 +125,7 @@ async def refresh_discovery(
     if _discovery_state["running"]:
         return {"detail": "Discovery already running.", "state": _discovery_state}
 
-    _discovery_state["running"] = True
-
-    def _run():
-        try:
-            notices = discovery_scrapers.run_all_scrapers()
-            fresh_db = SessionLocal()
-            try:
-                added = _sync_discovered(fresh_db, notices)
-                _discovery_state["count"] = added
-                _discovery_state["last_run"] = datetime.utcnow().isoformat()
-            finally:
-                fresh_db.close()
-        except Exception as exc:
-            import logging
-            logging.getLogger(__name__).warning("Discovery refresh failed: %s", exc)
-        finally:
-            _discovery_state["running"] = False
-
-    threading.Thread(target=_run, daemon=True).start()
+    threading.Thread(target=run_discovery_sync, daemon=True).start()
     return {"detail": "Discovery refresh started.", "state": _discovery_state}
 
 
