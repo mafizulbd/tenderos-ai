@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Building2, ShieldCheck } from "lucide-react";
 import { apiRequest } from "../api";
 import type { User } from "../types";
+import { useLanguage } from "../i18n/LanguageContext";
 
 type Props = {
   user: User;
@@ -13,6 +14,7 @@ type Props = {
 };
 
 export function ProfilePanel({ user, token, onUpdate }: Props) {
+  const { t } = useLanguage();
   const [draft, setDraft] = useState<User>(user);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
@@ -38,10 +40,10 @@ export function ProfilePanel({ user, token, onUpdate }: Props) {
       onUpdate(updated);
       setDraft(updated);
       setIsError(false);
-      setMessage("Profile saved.");
+      setMessage(t("profile", "saveSuccess"));
     } catch (err: unknown) {
       setIsError(true);
-      setMessage(err instanceof Error ? err.message : "Profile update failed.");
+      setMessage(err instanceof Error ? err.message : t("profile", "saveFailed"));
     } finally {
       setLoading(false);
     }
@@ -51,25 +53,25 @@ export function ProfilePanel({ user, token, onUpdate }: Props) {
     <section id="profile" className="surface profile-panel">
       <div className="panel-heading">
         <div>
-          <p className="eyebrow">Bidder context</p>
-          <h2>Company profile</h2>
+          <p className="eyebrow">{t("profile", "eyebrow")}</p>
+          <h2>{t("profile", "heading")}</h2>
         </div>
         <Building2 size={22} />
       </div>
 
       <p className="muted" style={{ marginTop: "-0.5rem" }}>
-        Organization name is managed by the org owner under <Link href="/dashboard/team">Team</Link>.
+        {t("profile", "orgManagedPrefix")} <Link href="/dashboard/team">{t("profile", "orgManagedLink")}</Link>.
       </p>
       <label>
-        Contact person
+        {t("profile", "contactPersonLabel")}
         <input value={draft.contact_name} onChange={(e) => update("contact_name", e.target.value)} />
       </label>
       <label>
-        Phone
+        {t("profile", "phoneLabel")}
         <input value={draft.phone} onChange={(e) => update("phone", e.target.value)} />
       </label>
       <label>
-        Address
+        {t("profile", "addressLabel")}
         <textarea value={draft.address} onChange={(e) => update("address", e.target.value)} />
       </label>
 
@@ -77,7 +79,7 @@ export function ProfilePanel({ user, token, onUpdate }: Props) {
 
       <button onClick={save} disabled={loading}>
         <ShieldCheck size={18} />
-        {loading ? "Saving..." : "Save profile"}
+        {loading ? t("profile", "saving") : t("profile", "saveButton")}
       </button>
     </section>
   );

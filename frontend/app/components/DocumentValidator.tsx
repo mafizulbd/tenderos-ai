@@ -2,6 +2,8 @@
 import { useRef, useState } from "react";
 import { ShieldCheck, Upload, AlertTriangle, CheckCircle, XCircle, Clock, FileText } from "lucide-react";
 import { API_URL } from "../api";
+import { useLanguage } from "../i18n/LanguageContext";
+import { translations } from "../i18n/translations";
 
 interface ValidationResult {
   filename: string;
@@ -16,14 +18,17 @@ interface ValidationResult {
   warnings: string[];
 }
 
-const STATUS_CONFIG = {
-  VALID: { icon: CheckCircle, label: "Valid", cls: "doc-status-valid" },
-  EXPIRING_SOON: { icon: Clock, label: "Expiring Soon", cls: "doc-status-warning" },
-  EXPIRED: { icon: XCircle, label: "Expired", cls: "doc-status-expired" },
-  CANNOT_DETERMINE: { icon: AlertTriangle, label: "Cannot Determine", cls: "doc-status-unknown" },
+type DocValidatorKey = keyof (typeof translations)["en"]["docValidator"];
+
+const STATUS_CONFIG: Record<ValidationResult["status"], { icon: typeof CheckCircle; labelKey: DocValidatorKey; cls: string }> = {
+  VALID: { icon: CheckCircle, labelKey: "statusValid", cls: "doc-status-valid" },
+  EXPIRING_SOON: { icon: Clock, labelKey: "statusExpiringSoon", cls: "doc-status-warning" },
+  EXPIRED: { icon: XCircle, labelKey: "statusExpired", cls: "doc-status-expired" },
+  CANNOT_DETERMINE: { icon: AlertTriangle, labelKey: "statusCannotDetermine", cls: "doc-status-unknown" },
 };
 
 export default function DocumentValidator({ token }: { token: string }) {
+  const { t } = useLanguage();
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -45,10 +50,10 @@ export default function DocumentValidator({ token }: { token: string }) {
         body: form,
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Validation failed");
+      if (!res.ok) throw new Error(data.detail || t("docValidator", "validationFailed"));
       setResult(data);
     } catch (e: any) {
-      setError(e.message || "Validation failed. Please try again.");
+      setError(e.message || t("docValidator", "validationFailedRetry"));
     } finally {
       setLoading(false);
     }
@@ -74,7 +79,7 @@ export default function DocumentValidator({ token }: { token: string }) {
     <div className="doc-validator">
       <div className="section-header">
         <ShieldCheck size={18} />
-        <span>AI Document Validator</span>
+        <span>{t("docValidator", "heading")}</span>
       </div>
 
       <div
@@ -88,13 +93,13 @@ export default function DocumentValidator({ token }: { token: string }) {
         {loading ? (
           <div className="doc-loading">
             <div className="spinner-ring" />
-            <span>AI is analyzing your document...</span>
+            <span>{t("docValidator", "analyzingStatus")}</span>
           </div>
         ) : (
           <>
             <Upload size={28} className="doc-drop-icon" />
-            <div className="doc-drop-title">Drop document here or click to upload</div>
-            <div className="doc-drop-sub">Supports: PDF, JPG, PNG, WEBP · Trade License · TIN · VAT · Certificates</div>
+            <div className="doc-drop-title">{t("docValidator", "dropTitle")}</div>
+            <div className="doc-drop-sub">{t("docValidator", "dropSub")}</div>
           </>
         )}
       </div>
@@ -109,43 +114,43 @@ export default function DocumentValidator({ token }: { token: string }) {
         <div className="doc-result">
           <div className={`doc-status-badge ${cfg.cls}`}>
             <StatusIcon size={16} />
-            <span>{cfg.label}</span>
+            <span>{t("docValidator", cfg.labelKey)}</span>
           </div>
 
           <div className="doc-result-header">
             <FileText size={16} />
-            <span>{result.document_type || "Document"}</span>
+            <span>{result.document_type || t("docValidator", "documentFallback")}</span>
             <span className="doc-filename">{result.filename}</span>
           </div>
 
           <div className="doc-fields">
             {result.holder_name && (
               <div className="doc-field">
-                <span className="doc-field-label">Holder</span>
+                <span className="doc-field-label">{t("docValidator", "holderLabel")}</span>
                 <span>{result.holder_name}</span>
               </div>
             )}
             {result.document_number && (
               <div className="doc-field">
-                <span className="doc-field-label">Number</span>
+                <span className="doc-field-label">{t("docValidator", "numberLabel")}</span>
                 <span>{result.document_number}</span>
               </div>
             )}
             {result.issuing_authority && (
               <div className="doc-field">
-                <span className="doc-field-label">Issued by</span>
+                <span className="doc-field-label">{t("docValidator", "issuedByLabel")}</span>
                 <span>{result.issuing_authority}</span>
               </div>
             )}
             {result.issue_date && (
               <div className="doc-field">
-                <span className="doc-field-label">Issue Date</span>
+                <span className="doc-field-label">{t("docValidator", "issueDateLabel")}</span>
                 <span>{result.issue_date}</span>
               </div>
             )}
             {result.expiry_date && (
               <div className="doc-field">
-                <span className="doc-field-label">Expiry Date</span>
+                <span className="doc-field-label">{t("docValidator", "expiryDateLabel")}</span>
                 <span className={result.status === "EXPIRED" ? "text-danger" : result.status === "EXPIRING_SOON" ? "text-warning" : ""}>
                   {result.expiry_date}
                 </span>
@@ -168,7 +173,7 @@ export default function DocumentValidator({ token }: { token: string }) {
           )}
 
           <button className="doc-validate-another" onClick={() => { setResult(null); setError(""); }}>
-            Validate Another Document
+            {t("docValidator", "validateAnother")}
           </button>
         </div>
       )}

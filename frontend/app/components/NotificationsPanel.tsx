@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { AlertTriangle, Bell, Check, CheckCheck, Clock, MessageSquare, RefreshCw, Shield, TrendingUp, UserPlus } from "lucide-react";
 import { apiRequest } from "../api";
 import type { AppNotification } from "../types";
+import { useLanguage } from "../i18n/LanguageContext";
 
 type Props = {
   token: string;
@@ -29,6 +30,7 @@ const URGENCY_CLASSES: Record<string, string> = {
 };
 
 export default function NotificationsPanel({ token, onSelectEntity }: Props) {
+  const { t } = useLanguage();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -83,7 +85,7 @@ export default function NotificationsPanel({ token, onSelectEntity }: Props) {
       <div className="reminder-header" onClick={() => setExpanded(!expanded)}>
         <div className="reminder-title">
           <Bell size={16} />
-          <span>Notifications</span>
+          <span>{t("notifications", "title")}</span>
           {unreadCount > 0 && (
             <span className={`reminder-badge ${criticals.length > 0 ? "critical" : ""}`}>
               {unreadCount}
@@ -95,7 +97,7 @@ export default function NotificationsPanel({ token, onSelectEntity }: Props) {
             <button
               className="reminder-refresh"
               onClick={(e) => { e.stopPropagation(); markAllRead(); }}
-              title="Mark all read"
+              title={t("notifications", "markAllRead")}
             >
               <CheckCheck size={13} />
             </button>
@@ -115,7 +117,7 @@ export default function NotificationsPanel({ token, onSelectEntity }: Props) {
         <div className="reminder-list">
           {notifications.length === 0 ? (
             <div className="reminder-empty">
-              {loading ? <span>Loading notifications...</span> : <span>You&apos;re all caught up.</span>}
+              {loading ? <span>{t("notifications", "loading")}</span> : <span>{t("notifications", "allCaughtUp")}</span>}
             </div>
           ) : (
             notifications.map((n, i) => {
@@ -137,13 +139,15 @@ export default function NotificationsPanel({ token, onSelectEntity }: Props) {
                     {n.days_left !== undefined && n.days_left !== null && (
                       <div className="reminder-meta">
                         <span className={`reminder-days ${n.days_left < 0 ? "overdue" : ""}`}>
-                          {n.days_left < 0 ? `${Math.abs(n.days_left)}d overdue` : `${n.days_left}d left`}
+                          {n.days_left < 0
+                            ? t("notifications", "daysOverdue", { n: Math.abs(n.days_left) })
+                            : t("notifications", "daysLeft", { n: n.days_left })}
                         </span>
                       </div>
                     )}
                   </div>
                   {n.persisted && !isRead && (
-                    <button className="icon-btn" title="Mark read" onClick={(e) => markRead(n, e)}>
+                    <button className="icon-btn" title={t("notifications", "markRead")} onClick={(e) => markRead(n, e)}>
                       <Check size={13} />
                     </button>
                   )}
