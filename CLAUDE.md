@@ -19,13 +19,13 @@ Requires `GEMINI_API_KEY` in the environment (or root `.env`).
 source .venv/bin/activate
 export DATABASE_URL="sqlite:///./tenderos_dev.db"
 export GEMINI_API_KEY=...
-uvicorn main:app --reload --port 8000   # run from backend/
+uvicorn main:app --reload --port 8008   # run from backend/
 ```
 
 ### Frontend (local)
 ```bash
 cd frontend && npm install
-NEXT_PUBLIC_API_URL=http://localhost:8000 npm run dev    # :3000
+NEXT_PUBLIC_API_URL=http://localhost:8008 npm run dev    # :3008 (npm run dev binds -p 3008)
 ```
 
 ### Backend tests
@@ -120,10 +120,18 @@ The AI prompt includes deep context on: PPA 2006, PPR 2008, CPTU, e-GP system, k
 
 ## Environment & ports
 
-| Service  | Docker port | Local default |
-|----------|-------------|---------------|
-| frontend | 3008        | 3000          |
-| backend  | 8008        | 8000          |
-| postgres | 5435        | n/a (SQLite)  |
+This host runs other unrelated apps on the common defaults (3000, 8000, etc.) —
+TenderOS uses these fixed, non-default ports everywhere (Docker *and* local
+dev use the same numbers, so there's no separate "local default" to
+misremember or collide with something else):
+
+| Service  | Port | Notes |
+|----------|------|-------|
+| frontend | 3008 | `npm run dev` binds `-p 3008` directly (see `frontend/package.json`) |
+| backend  | 8008 | pass `--port 8008` explicitly to `uvicorn` for local runs |
+| postgres | 5435 | Docker only — local dev uses SQLite, no port needed |
+
+Never start an ad-hoc dev server on 3000/8000 "just for a quick test" on this
+host — it will collide with other running apps. Always use 3008/8008.
 
 Upload cap: 15 MB. Accepted: `.pdf`, `.txt`, `.docx`. First 18,000 chars sent to Gemini.

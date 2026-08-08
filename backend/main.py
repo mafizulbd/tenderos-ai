@@ -22,7 +22,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 CORS_ORIGINS = [
     origin.strip()
-    for origin in os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:3008").split(",")
+    for origin in os.getenv("CORS_ORIGINS", "http://localhost:3008").split(",")
     if origin.strip()
 ]
 

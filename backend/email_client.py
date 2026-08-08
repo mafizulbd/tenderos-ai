@@ -21,7 +21,7 @@ def _from_address() -> str:
 
 
 def _frontend_url() -> str:
-    return os.getenv("FRONTEND_URL", "http://localhost:3000")
+    return os.getenv("FRONTEND_URL", "http://localhost:3008")
 
 
 def _send(to_email: str, subject: str, html: str) -> None:
