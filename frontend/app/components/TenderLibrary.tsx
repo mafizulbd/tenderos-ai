@@ -6,15 +6,19 @@ import { FileText, FolderKanban, Search, Trash2, UploadCloud } from "lucide-reac
 import { apiRequest } from "../api";
 import { formatDate } from "../utils";
 import type { TenderSummary } from "../types";
+import { useLanguage, type TFunction } from "../i18n/LanguageContext";
+import { translations } from "../i18n/translations";
 
 const PAGE_SIZE = 10;
 
-const BID_STATUS_LABELS: Record<string, { label: string; cls: string }> = {
-  reviewing:  { label: "Reviewing",  cls: "reviewing" },
-  submitted:  { label: "Submitted",  cls: "submitted" },
-  won:        { label: "Won",        cls: "won" },
-  lost:       { label: "Lost",       cls: "lost" },
-  "no-bid":   { label: "No Bid",     cls: "no-bid" },
+type BidStatusKey = keyof (typeof translations)["en"]["library"];
+
+const BID_STATUS_LABELS: Record<string, { labelKey: BidStatusKey; cls: string }> = {
+  reviewing:  { labelKey: "statusReviewing", cls: "reviewing" },
+  submitted:  { labelKey: "statusSubmitted", cls: "submitted" },
+  won:        { labelKey: "statusWon",       cls: "won" },
+  lost:       { labelKey: "statusLost",      cls: "lost" },
+  "no-bid":   { labelKey: "statusNoBid",     cls: "no-bid" },
 };
 
 type Props = {
@@ -25,16 +29,17 @@ type Props = {
   onDeleted: (id: number) => void;
 };
 
-function deadlineCountdown(deadline: string | null): { text: string; urgent: boolean } | null {
+function deadlineCountdown(deadline: string | null, t: TFunction): { text: string; urgent: boolean } | null {
   if (!deadline) return null;
   const diff = Math.ceil((new Date(deadline).getTime() - Date.now()) / 86400000);
-  if (diff < 0) return { text: `${Math.abs(diff)}d overdue`, urgent: true };
-  if (diff === 0) return { text: "Due today", urgent: true };
-  if (diff <= 3) return { text: `${diff}d left`, urgent: true };
-  return { text: `${diff}d`, urgent: false };
+  if (diff < 0) return { text: t("library", "daysOverdue", { n: Math.abs(diff) }), urgent: true };
+  if (diff === 0) return { text: t("library", "dueToday"), urgent: true };
+  if (diff <= 3) return { text: t("library", "daysLeft", { n: diff }), urgent: true };
+  return { text: t("library", "daysShort", { n: diff }), urgent: false };
 }
 
 export function TenderLibrary({ tenders, selectedId, token, onSelect, onDeleted }: Props) {
+  const { t } = useLanguage();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [deleting, setDeleting] = useState<number | null>(null);
@@ -62,14 +67,14 @@ export function TenderLibrary({ tenders, selectedId, token, onSelect, onDeleted 
 
   async function handleDelete(e: React.MouseEvent, id: number) {
     e.stopPropagation();
-    if (!confirm("Delete this tender analysis? This cannot be undone.")) return;
+    if (!confirm(t("library", "deleteConfirm"))) return;
     setDeleting(id);
     setError("");
     try {
       await apiRequest(`/tenders/${id}`, { method: "DELETE" }, token);
       onDeleted(id);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Could not delete this tender.");
+      setError(err instanceof Error ? err.message : t("library", "deleteFailed"));
     } finally {
       setDeleting(null);
     }
@@ -79,8 +84,8 @@ export function TenderLibrary({ tenders, selectedId, token, onSelect, onDeleted 
     <section id="history" className="surface history-panel">
       <div className="panel-heading">
         <div>
-          <p className="eyebrow">Tender library</p>
-          <h2>Recent analyses</h2>
+          <p className="eyebrow">{t("library", "eyebrow")}</p>
+          <h2>{t("library", "heading")}</h2>
         </div>
         <FolderKanban size={22} />
       </div>
@@ -89,7 +94,7 @@ export function TenderLibrary({ tenders, selectedId, token, onSelect, onDeleted 
         <div className="search-bar">
           <Search size={16} />
           <input
-            placeholder="Search by title, file, or content..."
+            placeholder={t("library", "searchPlaceholder")}
             value={search}
             onChange={(e) => handleSearch(e.target.value)}
           />
@@ -101,23 +106,21 @@ export function TenderLibrary({ tenders, selectedId, token, onSelect, onDeleted 
       {paged.length === 0 ? (
         <div className="empty-state compact">
           <FileText size={28} />
-          <strong>{search ? "No results" : "No tenders analyzed yet"}</strong>
+          <strong>{search ? t("library", "noResults") : t("library", "noTendersYet")}</strong>
           <span>
-            {search
-              ? "Try a different search term."
-              : "Upload your first tender to populate this library."}
+            {search ? t("library", "tryDifferentSearch") : t("library", "uploadFirstHint")}
           </span>
           {!search && (
             <Link href="/dashboard#analyze" className="btn-link primary" style={{ marginTop: 12 }}>
               <UploadCloud size={16} />
-              Upload a tender
+              {t("library", "uploadTenderLink")}
             </Link>
           )}
         </div>
       ) : (
         <div className="tender-list">
           {paged.map((tender) => {
-            const countdown = deadlineCountdown(tender.deadline);
+            const countdown = deadlineCountdown(tender.deadline, t);
             const bidInfo = BID_STATUS_LABELS[tender.bid_status] ?? BID_STATUS_LABELS.reviewing;
 
             return (
@@ -132,11 +135,11 @@ export function TenderLibrary({ tenders, selectedId, token, onSelect, onDeleted 
 
                 <div className="tender-row-body">
                   <strong>{tender.title}</strong>
-                  <span>{tender.file_name || "Uploaded document"}</span>
+                  <span>{tender.file_name || t("library", "uploadedDocumentFallback")}</span>
                 </div>
 
                 <div className="tender-row-meta">
-                  <span className={`bid-status-pill ${bidInfo.cls}`}>{bidInfo.label}</span>
+                  <span className={`bid-status-pill ${bidInfo.cls}`}>{t("library", bidInfo.labelKey)}</span>
                   {tender.bid_score !== null && (
                     <span className={`score-pill ${tender.bid_score >= 70 ? "good" : tender.bid_score >= 50 ? "mid" : "low"}`}>
                       {tender.bid_score}
@@ -152,7 +155,7 @@ export function TenderLibrary({ tenders, selectedId, token, onSelect, onDeleted 
                 <small>{formatDate(tender.created_at)}</small>
                 <button
                   className="icon-btn danger"
-                  title="Delete tender"
+                  title={t("library", "deleteTitle")}
                   disabled={deleting === tender.id}
                   onClick={(e) => handleDelete(e, tender.id)}
                 >

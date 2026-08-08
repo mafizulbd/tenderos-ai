@@ -5,6 +5,7 @@ import { FileSearch, UploadCloud, Zap } from "lucide-react";
 import { API_URL } from "../api";
 import { formatBytes } from "../utils";
 import type { Subscription, TenderDetail } from "../types";
+import { useLanguage } from "../i18n/LanguageContext";
 
 type ProgressStage = "analyzing" | "saving" | "";
 
@@ -16,6 +17,7 @@ type Props = {
 };
 
 export function UploadPanel({ token, subscription, onComplete, onTendersChanged }: Props) {
+  const { t } = useLanguage();
   const [title, setTitle] = useState("");
   const [language, setLanguage] = useState("english");
   const [deadline, setDeadline] = useState("");
@@ -34,7 +36,7 @@ export function UploadPanel({ token, subscription, onComplete, onTendersChanged 
 
   async function analyze() {
     if (!title.trim() || !file) {
-      setError("Enter a tender title and upload a PDF, DOCX, or TXT file.");
+      setError(t("upload", "errorMissingFields"));
       return;
     }
 
@@ -101,7 +103,7 @@ export function UploadPanel({ token, subscription, onComplete, onTendersChanged 
       }
     } catch (err: unknown) {
       if ((err as { name?: string }).name === "AbortError") return;
-      setError(err instanceof Error ? err.message : "Analysis failed.");
+      setError(err instanceof Error ? err.message : t("upload", "errorAnalysisFailed"));
       setStage("");
       setStreamText("");
     } finally {
@@ -118,8 +120,8 @@ export function UploadPanel({ token, subscription, onComplete, onTendersChanged 
   }
 
   const stageLabel: Record<ProgressStage, string> = {
-    analyzing: "AI is analyzing your tender document...",
-    saving: "Saving results to your library...",
+    analyzing: t("upload", "analyzingStatus"),
+    saving: t("upload", "savingStatus"),
     "": "",
   };
 
@@ -127,8 +129,8 @@ export function UploadPanel({ token, subscription, onComplete, onTendersChanged 
     <section id="analyze" className="surface upload-panel">
       <div className="panel-heading">
         <div>
-          <p className="eyebrow">New analysis</p>
-          <h2>Analyze tender document</h2>
+          <p className="eyebrow">{t("upload", "eyebrow")}</p>
+          <h2>{t("upload", "heading")}</h2>
         </div>
         <UploadCloud size={22} />
       </div>
@@ -137,39 +139,40 @@ export function UploadPanel({ token, subscription, onComplete, onTendersChanged 
         <div className="limit-banner">
           <Zap size={15} />
           <span>
-            Monthly limit reached ({limit} analyses on Free plan).{" "}
+            {t("upload", "limitReachedPrefix", { limit })}{" "}
             <a href="mailto:support@tenderos.ai?subject=Upgrade%20to%20Pro">
-              Upgrade to Pro — ৳999/month
+              {t("upload", "upgradeLinkText")}
             </a>{" "}
-            for unlimited analyses.
+            {t("upload", "limitReachedSuffix")}
           </span>
         </div>
       )}
 
       {nearLimit && (
         <p className="notice warn">
-          {limit - used} analysis remaining this month.{" "}
-          <a href="mailto:support@tenderos.ai?subject=Upgrade%20to%20Pro">Upgrade to Pro</a> for unlimited.
+          {t("upload", "nearLimitPrefix", { remaining: limit - used })}{" "}
+          <a href="mailto:support@tenderos.ai?subject=Upgrade%20to%20Pro">{t("upload", "upgradeToProLinkText")}</a>{" "}
+          {t("upload", "nearLimitSuffix")}
         </p>
       )}
 
       {!loading ? (
         <>
           <label>
-            Tender title <span className="req">*</span>
-            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. LGED Road Construction Tender 2025" />
+            {t("upload", "tenderTitleLabel")} <span className="req">*</span>
+            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t("upload", "titlePlaceholder")} />
           </label>
 
           <div className="field-row">
             <label>
-              Output language
+              {t("upload", "outputLanguageLabel")}
               <select value={language} onChange={(e) => setLanguage(e.target.value)}>
-                <option value="english">English</option>
-                <option value="bangla">বাংলা (Bangla)</option>
+                <option value="english">{t("upload", "englishOption")}</option>
+                <option value="bangla">{t("upload", "banglaOption")}</option>
               </select>
             </label>
             <label>
-              Submission deadline
+              {t("upload", "submissionDeadlineLabel")}
               <input
                 type="date"
                 value={deadline}
@@ -179,7 +182,7 @@ export function UploadPanel({ token, subscription, onComplete, onTendersChanged 
           </div>
 
           <label>
-            Tender file <span className="req">*</span>
+            {t("upload", "tenderFileLabel")} <span className="req">*</span>
             <input
               type="file"
               accept=".txt,.pdf,.docx"
@@ -190,11 +193,9 @@ export function UploadPanel({ token, subscription, onComplete, onTendersChanged 
           <div className="upload-drop">
             <FileSearch size={24} />
             <div>
-              <strong>{file ? file.name : "PDF, DOCX, or TXT up to 15 MB"}</strong>
+              <strong>{file ? file.name : t("upload", "dropDefaultTitle")}</strong>
               <span>
-                {file
-                  ? formatBytes(file.size)
-                  : "9-section Bangladesh-specific AI analysis including bid recommendation & score."}
+                {file ? formatBytes(file.size) : t("upload", "dropDefaultSubtitle")}
               </span>
             </div>
           </div>
@@ -207,18 +208,18 @@ export function UploadPanel({ token, subscription, onComplete, onTendersChanged 
             disabled={limitReached}
           >
             <FileSearch size={18} />
-            Analyze tender
+            {t("upload", "analyzeButton")}
           </button>
         </>
       ) : (
         <div className="stream-panel">
           <div className="stream-stages">
             <span className={`stage-pill ${stage === "analyzing" ? "active" : stage === "saving" || streamText ? "done" : ""}`}>
-              1. Analyzing
+              {t("upload", "stage1")}
             </span>
             <span className="stage-sep">›</span>
             <span className={`stage-pill ${stage === "saving" ? "active" : ""}`}>
-              2. Saving
+              {t("upload", "stage2")}
             </span>
           </div>
 
@@ -237,7 +238,7 @@ export function UploadPanel({ token, subscription, onComplete, onTendersChanged 
           )}
 
           <button onClick={cancel} className="cancel-btn">
-            Cancel
+            {t("upload", "cancelButton")}
           </button>
         </div>
       )}
