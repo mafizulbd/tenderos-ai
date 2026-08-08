@@ -14,13 +14,17 @@ import { TasksPanel } from "./TasksPanel";
 import { LinkedVendorsPanel } from "./LinkedVendorsPanel";
 import type { Organization, TenderDetail as TDetail } from "../types";
 import { SECONDARY_MODULES_ENABLED } from "../features";
+import { useLanguage, type TFunction } from "../i18n/LanguageContext";
+import { translations } from "../i18n/translations";
 
-const BID_STATUSES = [
-  { value: "reviewing",  label: "Reviewing" },
-  { value: "submitted",  label: "Submitted" },
-  { value: "won",        label: "Won" },
-  { value: "lost",       label: "Lost" },
-  { value: "no-bid",     label: "No Bid" },
+type LibraryKey = keyof (typeof translations)["en"]["library"];
+
+const BID_STATUSES: { value: string; labelKey: LibraryKey }[] = [
+  { value: "reviewing",  labelKey: "statusReviewing" },
+  { value: "submitted",  labelKey: "statusSubmitted" },
+  { value: "won",        labelKey: "statusWon" },
+  { value: "lost",       labelKey: "statusLost" },
+  { value: "no-bid",     labelKey: "statusNoBid" },
 ];
 
 type Props = {
@@ -38,11 +42,11 @@ function scoreColor(score: number): string {
   return "#dc2626";
 }
 
-function scoreLabel(score: number): string {
-  if (score >= 80) return "Strong Fit";
-  if (score >= 60) return "Viable";
-  if (score >= 40) return "Needs Work";
-  return "Not Viable";
+function scoreLabel(score: number, t: TFunction): string {
+  if (score >= 80) return t("detail", "scoreStrongFit");
+  if (score >= 60) return t("detail", "scoreViable");
+  if (score >= 40) return t("detail", "scoreNeedsWork");
+  return t("detail", "scoreNotViable");
 }
 
 function extractDecision(text: string | null): string | null {
@@ -52,6 +56,7 @@ function extractDecision(text: string | null): string | null {
 }
 
 export function TenderDetail({ tender, token, organization, currentUserId, onUpdated, onTendersChanged }: Props) {
+  const { t } = useLanguage();
   const [reanalyzing, setReanalyzing] = useState(false);
   const [downloadingDocx, setDownloadingDocx] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
@@ -84,7 +89,7 @@ export function TenderDetail({ tender, token, organization, currentUserId, onUpd
       onUpdated(updated);
       await onTendersChanged();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Re-analysis failed.");
+      setError(err instanceof Error ? err.message : t("detail", "reanalyzeFailed"));
     } finally {
       setReanalyzing(false);
     }
@@ -102,7 +107,7 @@ export function TenderDetail({ tender, token, organization, currentUserId, onUpd
       onUpdated(updated);
       await onTendersChanged();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Save failed.");
+      setError(err instanceof Error ? err.message : t("detail", "saveFailed"));
     } finally {
       setSavingNotes(false);
     }
@@ -120,7 +125,7 @@ export function TenderDetail({ tender, token, organization, currentUserId, onUpd
       }, token);
       setContractCreated(true);
     } catch (err: unknown) {
-      setContractMessage(err instanceof Error ? err.message : "Could not create contract.");
+      setContractMessage(err instanceof Error ? err.message : t("detail", "createContractFailed"));
     } finally {
       setCreatingContract(false);
     }
@@ -135,7 +140,7 @@ export function TenderDetail({ tender, token, organization, currentUserId, onUpd
       });
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        throw new Error(data?.detail ?? "Download failed.");
+        throw new Error(data?.detail ?? t("detail", "downloadFailed"));
       }
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
@@ -145,7 +150,7 @@ export function TenderDetail({ tender, token, organization, currentUserId, onUpd
       link.click();
       URL.revokeObjectURL(url);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Download failed.");
+      setError(err instanceof Error ? err.message : t("detail", "downloadFailed"));
     } finally {
       setLoading(false);
     }
@@ -155,12 +160,12 @@ export function TenderDetail({ tender, token, organization, currentUserId, onUpd
     <>
       <section className="surface detail-header">
         <div>
-          <p className="eyebrow">Selected tender</p>
+          <p className="eyebrow">{t("detail", "selectedTender")}</p>
           <h2>{tender.title}</h2>
           <p className="muted">
             {tender.file_name} &nbsp;·&nbsp; {formatBytes(tender.file_size)} &nbsp;·&nbsp; {tender.language}
             {tender.deadline && (
-              <> &nbsp;·&nbsp; Deadline: <strong>{formatDate(tender.deadline)}</strong></>
+              <> &nbsp;·&nbsp; {t("detail", "deadlineLabel")} <strong>{formatDate(tender.deadline)}</strong></>
             )}
           </p>
         </div>
@@ -170,15 +175,15 @@ export function TenderDetail({ tender, token, organization, currentUserId, onUpd
             value={reanalyzeLanguage}
             onChange={(e) => setReanalyzeLanguage(e.target.value)}
             disabled={busy}
-            title="Re-analyze language"
+            title={t("detail", "reanalyzeLanguageTitle")}
           >
             <option value="english">English</option>
             <option value="bangla">বাংলা</option>
           </select>
 
-          <button onClick={reanalyze} disabled={busy} title="Re-analyze with selected language">
+          <button onClick={reanalyze} disabled={busy} title={t("detail", "reanalyzeTitle")}>
             <RefreshCw size={16} className={reanalyzing ? "spinning" : ""} />
-            {reanalyzing ? "Analyzing..." : "Re-analyze"}
+            {reanalyzing ? t("detail", "reanalyzing") : t("detail", "reanalyze")}
           </button>
 
           <button
@@ -213,10 +218,10 @@ export function TenderDetail({ tender, token, organization, currentUserId, onUpd
             className="primary"
             onClick={() => setShowWizard(true)}
             disabled={busy}
-            title="Generate AI-personalized proposal using your company knowledge base"
+            title={t("detail", "aiProposalButtonTitle")}
           >
             <BrainCircuit size={16} />
-            AI Proposal
+            {t("detail", "aiProposalButton")}
           </button>
         </div>
       </section>
@@ -243,13 +248,13 @@ export function TenderDetail({ tender, token, organization, currentUserId, onUpd
             <span className="score-denom">/100</span>
           </div>
           <div className="score-info">
-            <strong style={{ color: scoreColor(tender.bid_score) }}>{scoreLabel(tender.bid_score)}</strong>
+            <strong style={{ color: scoreColor(tender.bid_score) }}>{scoreLabel(tender.bid_score, t)}</strong>
             {decision && (
               <span className={`decision-badge ${decision.toLowerCase().replace(" ", "-")}`}>
                 {decision}
               </span>
             )}
-            <p className="muted">AI Bid Recommendation Score</p>
+            <p className="muted">{t("detail", "aiScoreCaption")}</p>
           </div>
         </section>
       )}
@@ -257,31 +262,31 @@ export function TenderDetail({ tender, token, organization, currentUserId, onUpd
       {/* Status & notes panel */}
       <section className="surface status-notes-panel">
         <div className="status-notes-header">
-          <h3>Bid tracking</h3>
+          <h3>{t("detail", "bidTracking")}</h3>
           <button onClick={saveStatus} disabled={busy} className="save-btn">
             <Save size={15} />
-            {savingNotes ? "Saving..." : "Save"}
+            {savingNotes ? t("detail", "saving") : t("detail", "save")}
           </button>
         </div>
 
         <div className="field-row">
           <label>
-            Bid status
+            {t("detail", "bidStatusLabel")}
             <select value={bidStatus} onChange={(e) => setBidStatus(e.target.value)} disabled={busy}>
               {BID_STATUSES.map((s) => (
-                <option key={s.value} value={s.value}>{s.label}</option>
+                <option key={s.value} value={s.value}>{t("library", s.labelKey)}</option>
               ))}
             </select>
           </label>
         </div>
 
         <label>
-          Internal notes
+          {t("detail", "internalNotesLabel")}
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={3}
-            placeholder="Add notes about this tender, bid team assignments, or submission checklist status..."
+            placeholder={t("detail", "notesPlaceholder")}
             disabled={busy}
           />
         </label>
@@ -290,14 +295,14 @@ export function TenderDetail({ tender, token, organization, currentUserId, onUpd
           <div className="detail-actions" style={{ marginTop: "0.75rem" }}>
             <button onClick={createContract} disabled={creatingContract}>
               <FileSignature size={16} />
-              {creatingContract ? "Creating..." : "Create contract"}
+              {creatingContract ? t("detail", "creatingContract") : t("detail", "createContract")}
             </button>
           </div>
         )}
         {SECONDARY_MODULES_ENABLED && contractMessage && <p className="notice error">{contractMessage}</p>}
         {SECONDARY_MODULES_ENABLED && contractCreated && (
           <p className="notice">
-            Contract created — <Link href="/dashboard/contracts">view it in Contracts</Link>.
+            {t("detail", "contractCreatedPrefix")} <Link href="/dashboard/contracts">{t("detail", "contractCreatedLink")}</Link>.
           </p>
         )}
       </section>
@@ -340,34 +345,34 @@ export function TenderDetail({ tender, token, organization, currentUserId, onUpd
         onSaved={(s) => setLocalStrategy(s)}
       />
 
-      <Section title="Executive Summary"          content={tender.summary} />
-      <Section title="Eligibility Criteria"        content={tender.eligibility} />
-      <Section title="Financial Requirements"      content={tender.financial_requirements} />
-      <Section title="Required Documents"          content={tender.required_documents} />
-      <Section title="Compliance Matrix"           content={tender.compliance_matrix} />
-      <Section title="Risk Analysis"               content={tender.risk_analysis} />
-      <Section title="Bid Recommendation"          content={tender.bid_recommendation} />
-      <Section title="Tender Submission Draft"     content={tender.proposal_draft} />
-      <Section title="Final Submission Checklist"  content={tender.final_checklist} />
+      <Section title={t("sections", "summary")}            content={tender.summary} />
+      <Section title={t("sections", "eligibility")}        content={tender.eligibility} />
+      <Section title={t("sections", "financial")}          content={tender.financial_requirements} />
+      <Section title={t("sections", "requiredDocuments")}  content={tender.required_documents} />
+      <Section title={t("sections", "complianceMatrix")}   content={tender.compliance_matrix} />
+      <Section title={t("sections", "riskAnalysis")}       content={tender.risk_analysis} />
+      <Section title={t("sections", "bidRecommendation")}  content={tender.bid_recommendation} />
+      <Section title={t("sections", "submissionDraft")}    content={tender.proposal_draft} />
+      <Section title={t("sections", "finalChecklist")}     content={tender.final_checklist} />
 
       {/* AI Personalized Proposal */}
       {localProposal ? (
         <section className="surface proposal-section">
           <div className="proposal-section-header">
             <div>
-              <p className="eyebrow">AI-Generated</p>
-              <h3>Personalized Bid Proposal</h3>
+              <p className="eyebrow">{t("detail", "aiGeneratedEyebrow")}</p>
+              <h3>{t("detail", "personalizedProposalHeading")}</h3>
               <p className="muted" style={{ fontSize: 13, marginTop: 2 }}>
-                Generated using your company knowledge base. Ready to edit and submit.
+                {t("detail", "personalizedProposalSubtitle")}
               </p>
             </div>
             <button
               className="primary"
               onClick={() => setShowWizard(true)}
-              title="Regenerate proposal"
+              title={t("detail", "regenerateProposalTitle")}
             >
               <BrainCircuit size={15} />
-              Regenerate
+              {t("detail", "regenerate")}
             </button>
           </div>
           <pre className="proposal-text">{localProposal}</pre>
@@ -376,15 +381,12 @@ export function TenderDetail({ tender, token, organization, currentUserId, onUpd
         <section className="surface proposal-cta">
           <BrainCircuit size={32} className="proposal-cta-icon" />
           <div>
-            <h3>Generate AI Proposal</h3>
-            <p className="muted">
-              Get a complete, submission-ready bid proposal generated from your company knowledge base
-              and this tender&apos;s requirements — including win probability assessment.
-            </p>
+            <h3>{t("detail", "generateProposalHeading")}</h3>
+            <p className="muted">{t("detail", "generateProposalBody")}</p>
           </div>
           <button className="primary" onClick={() => setShowWizard(true)}>
             <BrainCircuit size={16} />
-            Generate Proposal
+            {t("detail", "generateProposalButton")}
           </button>
         </section>
       )}
@@ -393,16 +395,18 @@ export function TenderDetail({ tender, token, organization, currentUserId, onUpd
 }
 
 export function TenderDetailEmpty({ hasTenders }: { hasTenders: boolean }) {
+  const { t } = useLanguage();
+
   if (!hasTenders) {
     return (
       <div className="detail-stack">
         <section className="surface empty-state">
           <FileSearch size={36} />
-          <h2>No tenders yet</h2>
-          <p className="muted">Upload your first tender to analyze it and start tracking your bid.</p>
+          <h2>{t("detail", "noTendersHeading")}</h2>
+          <p className="muted">{t("detail", "noTendersBody")}</p>
           <Link href="/dashboard#analyze" className="btn-link primary" style={{ marginTop: 12 }}>
             <UploadCloud size={16} />
-            Upload a tender
+            {t("detail", "uploadTenderLink")}
           </Link>
         </section>
       </div>
@@ -413,17 +417,16 @@ export function TenderDetailEmpty({ hasTenders }: { hasTenders: boolean }) {
     <div className="detail-stack">
       <section className="surface empty-state">
         <FileSearch size={36} />
-        <h2>No tender selected</h2>
-        <p className="muted">Click any tender in the library on the left to open it here.</p>
+        <h2>{t("detail", "noTenderSelectedHeading")}</h2>
+        <p className="muted">{t("detail", "noTenderSelectedBody")}</p>
       </section>
 
       <section className="surface proposal-cta">
         <BrainCircuit size={32} className="proposal-cta-icon" />
         <div>
-          <h3>AI Proposal Wizard</h3>
+          <h3>{t("detail", "wizardCtaHeading")}</h3>
           <p className="muted">
-            Select a tender then click the blue <strong>AI Proposal</strong> button to generate a
-            complete, submission-ready bid proposal — including Win Probability Assessment.
+            {t("detail", "wizardCtaBodyPrefix")} <strong>{t("detail", "wizardCtaBodyBold")}</strong> {t("detail", "wizardCtaBodySuffix")}
           </p>
         </div>
       </section>

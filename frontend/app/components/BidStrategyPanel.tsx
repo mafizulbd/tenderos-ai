@@ -4,6 +4,22 @@ import { useState } from "react";
 import { AlertTriangle, BrainCircuit, CheckCircle2, Loader, Target, TrendingUp, XCircle } from "lucide-react";
 import { API_URL } from "../api";
 import type { TenderDetail } from "../types";
+import { useLanguage } from "../i18n/LanguageContext";
+import { translations } from "../i18n/translations";
+
+type BidStrategyKey = keyof (typeof translations)["en"]["bidStrategy"];
+
+const STRATEGY_KEY: Record<string, BidStrategyKey> = {
+  SUBMIT: "strategySubmit",
+  CONDITIONAL: "strategyConditional",
+  WITHDRAW: "strategyWithdraw",
+};
+
+const RISK_KEY: Record<string, BidStrategyKey> = {
+  HIGH: "riskHigh",
+  MEDIUM: "riskMedium",
+  LOW: "riskLow",
+};
 
 type Props = {
   tender: TenderDetail;
@@ -128,15 +144,16 @@ function scoreRingColor(score: number) {
   return "#dc2626";
 }
 
-const RISK_ROWS: { key: keyof BidIntelligence; label: string }[] = [
-  { key: "technicalRisk",   label: "Technical" },
-  { key: "financialRisk",   label: "Financial" },
-  { key: "legalRisk",       label: "Legal / Compliance" },
-  { key: "operationalRisk", label: "Operational" },
-  { key: "marketRisk",      label: "Market / Price" },
+const RISK_ROWS: { key: keyof BidIntelligence; labelKey: BidStrategyKey }[] = [
+  { key: "technicalRisk",   labelKey: "riskTechnical" },
+  { key: "financialRisk",   labelKey: "riskFinancial" },
+  { key: "legalRisk",       labelKey: "riskLegal" },
+  { key: "operationalRisk", labelKey: "riskOperational" },
+  { key: "marketRisk",      labelKey: "riskMarket" },
 ];
 
 export function BidStrategyPanel({ tender, token, onSaved }: Props) {
+  const { t } = useLanguage();
   const [generating, setGenerating] = useState(false);
   const [streamText, setStreamText] = useState("");
   const [error, setError] = useState("");
@@ -160,11 +177,11 @@ export function BidStrategyPanel({ tender, token, onSaved }: Props) {
 
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
-        throw new Error(err?.detail ?? "Generation failed.");
+        throw new Error(err?.detail ?? t("bidStrategy", "generationFailed"));
       }
 
       const reader = response.body?.getReader();
-      if (!reader) throw new Error("No stream.");
+      if (!reader) throw new Error(t("bidStrategy", "noStream"));
       const decoder = new TextDecoder();
       let full = "";
 
@@ -184,7 +201,7 @@ export function BidStrategyPanel({ tender, token, onSaved }: Props) {
       setLocalStrategy(full);
       onSaved(full);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed.");
+      setError(err instanceof Error ? err.message : t("bidStrategy", "genericFailed"));
     } finally {
       setGenerating(false);
     }
@@ -198,11 +215,8 @@ export function BidStrategyPanel({ tender, token, onSaved }: Props) {
       <section className="surface strategy-empty">
         <div className="strategy-empty-icon"><Target size={36} /></div>
         <div>
-          <h3>AI Bid Strategy Advisor</h3>
-          <p className="muted">
-            Get a complete intelligence report: Match Score, Bid Strategy, Price Range,
-            Compliance Engine, Risk Heatmap, and Executive Brief — tailored to your company KB.
-          </p>
+          <h3>{t("bidStrategy", "advisorHeading")}</h3>
+          <p className="muted">{t("bidStrategy", "advisorBody")}</p>
           <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 12 }}>
             <select
               value={language}
@@ -213,7 +227,7 @@ export function BidStrategyPanel({ tender, token, onSaved }: Props) {
               <option value="bangla">বাংলা</option>
             </select>
             <button className="primary" onClick={run}>
-              <BrainCircuit size={16} /> Run Bid Intelligence
+              <BrainCircuit size={16} /> {t("bidStrategy", "runButton")}
             </button>
           </div>
           {error && <p className="notice error" style={{ marginTop: 10 }}>{error}</p>}
@@ -227,7 +241,7 @@ export function BidStrategyPanel({ tender, token, onSaved }: Props) {
       <section className="surface strategy-generating">
         <div className="stream-status">
           <Loader size={16} className="spinning" />
-          AI analyzing bid strategy, compliance, and price intelligence...
+          {t("bidStrategy", "generatingStatus")}
         </div>
         <textarea className="stream-output" readOnly value={streamText} style={{ minHeight: 180, fontSize: 12 }} />
       </section>
@@ -241,8 +255,8 @@ export function BidStrategyPanel({ tender, token, onSaved }: Props) {
       {/* Header */}
       <div className="bi-header">
         <div>
-          <p className="eyebrow">AI Bid Intelligence</p>
-          <h2>Bid Strategy Report</h2>
+          <p className="eyebrow">{t("bidStrategy", "eyebrow")}</p>
+          <h2>{t("bidStrategy", "heading")}</h2>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <select value={language} onChange={(e) => setLanguage(e.target.value)} style={{ width: "auto", marginTop: 0 }}>
@@ -250,7 +264,7 @@ export function BidStrategyPanel({ tender, token, onSaved }: Props) {
             <option value="bangla">বাংলা</option>
           </select>
           <button onClick={run} disabled={generating}>
-            <BrainCircuit size={15} /> Refresh
+            <BrainCircuit size={15} /> {t("bidStrategy", "refreshButton")}
           </button>
         </div>
       </div>
@@ -264,8 +278,8 @@ export function BidStrategyPanel({ tender, token, onSaved }: Props) {
             <span className="bi-ring-sub">/100</span>
           </div>
           <div>
-            <p className="bi-kpi-label">Match Score</p>
-            <p className="bi-kpi-sub muted">Tender fit for your company</p>
+            <p className="bi-kpi-label">{t("bidStrategy", "matchScoreLabel")}</p>
+            <p className="bi-kpi-sub muted">{t("bidStrategy", "matchScoreSub")}</p>
           </div>
         </div>
 
@@ -276,8 +290,8 @@ export function BidStrategyPanel({ tender, token, onSaved }: Props) {
             {intel.strategy === "CONDITIONAL" && <AlertTriangle size={22} />}
             {intel.strategy === "WITHDRAW" && <XCircle size={22} />}
             <div>
-              <p className="bi-strategy-label">Bid Strategy</p>
-              <strong className="bi-strategy-decision">{intel.strategy}</strong>
+              <p className="bi-strategy-label">{t("bidStrategy", "strategyLabel")}</p>
+              <strong className="bi-strategy-decision">{t("bidStrategy", STRATEGY_KEY[intel.strategy])}</strong>
             </div>
           </div>
         )}
@@ -289,16 +303,16 @@ export function BidStrategyPanel({ tender, token, onSaved }: Props) {
             <span className="bi-ring-sub">%</span>
           </div>
           <div>
-            <p className="bi-kpi-label">Bid Confidence</p>
-            <p className="bi-kpi-sub muted">AI confidence to win</p>
+            <p className="bi-kpi-label">{t("bidStrategy", "confidenceLabel")}</p>
+            <p className="bi-kpi-sub muted">{t("bidStrategy", "confidenceSub")}</p>
           </div>
         </div>
 
         {/* Competition level */}
         {intel.competitionLevel && (
           <div className="bi-kpi-flat" style={{ background: riskBg(intel.competitionLevel) }}>
-            <p className="bi-kpi-label">Competition</p>
-            <strong style={{ color: riskColor(intel.competitionLevel) }}>{intel.competitionLevel}</strong>
+            <p className="bi-kpi-label">{t("bidStrategy", "competitionLabel")}</p>
+            <strong style={{ color: riskColor(intel.competitionLevel) }}>{t("bidStrategy", RISK_KEY[intel.competitionLevel])}</strong>
           </div>
         )}
       </div>
@@ -306,30 +320,30 @@ export function BidStrategyPanel({ tender, token, onSaved }: Props) {
       {/* Price Intelligence */}
       {(intel.recommendedPrice || intel.marketPrice || intel.margin) && (
         <div className="bi-section">
-          <h3 className="bi-section-title"><TrendingUp size={16} /> Price Intelligence</h3>
+          <h3 className="bi-section-title"><TrendingUp size={16} /> {t("bidStrategy", "priceIntelligenceTitle")}</h3>
           <div className="bi-price-grid">
             {intel.recommendedPrice && (
               <div className="bi-price-card blue">
-                <span>Recommended Bid Range</span>
+                <span>{t("bidStrategy", "recommendedRangeLabel")}</span>
                 <strong>{intel.recommendedPrice}</strong>
               </div>
             )}
             {intel.marketPrice && (
               <div className="bi-price-card green">
-                <span>Estimated Market Price</span>
+                <span>{t("bidStrategy", "marketPriceLabel")}</span>
                 <strong>{intel.marketPrice}</strong>
               </div>
             )}
             {intel.margin && (
               <div className="bi-price-card amber">
-                <span>Suggested Profit Margin</span>
+                <span>{t("bidStrategy", "marginLabel")}</span>
                 <strong>{intel.margin}</strong>
               </div>
             )}
             {intel.priceRisk && (
               <div className="bi-price-card" style={{ borderColor: riskColor(intel.priceRisk), background: riskBg(intel.priceRisk) }}>
-                <span>Price Risk</span>
-                <strong style={{ color: riskColor(intel.priceRisk) }}>{intel.priceRisk}</strong>
+                <span>{t("bidStrategy", "priceRiskLabel")}</span>
+                <strong style={{ color: riskColor(intel.priceRisk) }}>{t("bidStrategy", RISK_KEY[intel.priceRisk])}</strong>
               </div>
             )}
           </div>
@@ -342,7 +356,7 @@ export function BidStrategyPanel({ tender, token, onSaved }: Props) {
       {/* Compliance Engine */}
       {intel.complianceScore > 0 && (
         <div className="bi-section">
-          <h3 className="bi-section-title"><CheckCircle2 size={16} /> Compliance Engine</h3>
+          <h3 className="bi-section-title"><CheckCircle2 size={16} /> {t("bidStrategy", "complianceTitle")}</h3>
           <div className="bi-compliance">
             <div className="bi-compliance-score">
               <div className="compliance-bar-wrap">
@@ -359,14 +373,14 @@ export function BidStrategyPanel({ tender, token, onSaved }: Props) {
               </span>
             </div>
             <div className="bi-compliance-counts">
-              {intel.totalReqs > 0 && <div className="comp-chip total">Total: {intel.totalReqs}</div>}
-              {intel.metReqs > 0 && <div className="comp-chip met">✓ Met: {intel.metReqs}</div>}
-              {intel.partialReqs > 0 && <div className="comp-chip partial">~ Partial: {intel.partialReqs}</div>}
-              {intel.missingReqs > 0 && <div className="comp-chip missing">✗ Missing: {intel.missingReqs}</div>}
+              {intel.totalReqs > 0 && <div className="comp-chip total">{t("bidStrategy", "totalLabel")} {intel.totalReqs}</div>}
+              {intel.metReqs > 0 && <div className="comp-chip met">{t("bidStrategy", "metLabel")} {intel.metReqs}</div>}
+              {intel.partialReqs > 0 && <div className="comp-chip partial">{t("bidStrategy", "partialLabel")} {intel.partialReqs}</div>}
+              {intel.missingReqs > 0 && <div className="comp-chip missing">{t("bidStrategy", "missingLabel")} {intel.missingReqs}</div>}
             </div>
             {intel.missingItems.length > 0 && (
               <div className="bi-missing-list">
-                <strong>Missing requirements:</strong>
+                <strong>{t("bidStrategy", "missingRequirementsLabel")}</strong>
                 <ul>
                   {intel.missingItems.map((item, i) => <li key={i}>{item}</li>)}
                 </ul>
@@ -378,15 +392,15 @@ export function BidStrategyPanel({ tender, token, onSaved }: Props) {
 
       {/* Risk Heatmap */}
       <div className="bi-section">
-        <h3 className="bi-section-title"><AlertTriangle size={16} /> Risk Heatmap</h3>
+        <h3 className="bi-section-title"><AlertTriangle size={16} /> {t("bidStrategy", "riskHeatmapTitle")}</h3>
         <div className="risk-heatmap">
-          {RISK_ROWS.map(({ key, label }) => {
+          {RISK_ROWS.map(({ key, labelKey }) => {
             const level = intel[key] as RiskLevel;
             if (!level) return null;
             const barWidth = level === "HIGH" ? 90 : level === "MEDIUM" ? 55 : 25;
             return (
               <div key={key} className="risk-row">
-                <span className="risk-label">{label}</span>
+                <span className="risk-label">{t("bidStrategy", labelKey)}</span>
                 <div className="risk-bar-track">
                   <div
                     className="risk-bar-fill"
@@ -394,7 +408,7 @@ export function BidStrategyPanel({ tender, token, onSaved }: Props) {
                   />
                 </div>
                 <span className="risk-badge" style={{ background: riskBg(level), color: riskColor(level) }}>
-                  {level}
+                  {t("bidStrategy", RISK_KEY[level])}
                 </span>
               </div>
             );
@@ -406,7 +420,7 @@ export function BidStrategyPanel({ tender, token, onSaved }: Props) {
       <div className="bi-two-col">
         {intel.matchReasons.length > 0 && (
           <div className="bi-section">
-            <h3 className="bi-section-title"><CheckCircle2 size={16} /> Why You Match</h3>
+            <h3 className="bi-section-title"><CheckCircle2 size={16} /> {t("bidStrategy", "whyYouMatchTitle")}</h3>
             <ul className="bi-list green">
               {intel.matchReasons.map((r, i) => <li key={i}>{r}</li>)}
             </ul>
@@ -414,7 +428,7 @@ export function BidStrategyPanel({ tender, token, onSaved }: Props) {
         )}
         {intel.criticalGaps.length > 0 && (
           <div className="bi-section">
-            <h3 className="bi-section-title"><XCircle size={16} /> Critical Gaps</h3>
+            <h3 className="bi-section-title"><XCircle size={16} /> {t("bidStrategy", "criticalGapsTitle")}</h3>
             <ul className="bi-list red">
               {intel.criticalGaps.map((g, i) => <li key={i}>{g}</li>)}
             </ul>
@@ -425,7 +439,7 @@ export function BidStrategyPanel({ tender, token, onSaved }: Props) {
       {/* Recommended Actions */}
       {intel.actions.length > 0 && (
         <div className="bi-section">
-          <h3 className="bi-section-title">Recommended Actions</h3>
+          <h3 className="bi-section-title">{t("bidStrategy", "recommendedActionsTitle")}</h3>
           <ol className="bi-actions">
             {intel.actions.map((a, i) => <li key={i}>{a}</li>)}
           </ol>
@@ -435,7 +449,7 @@ export function BidStrategyPanel({ tender, token, onSaved }: Props) {
       {/* Executive Brief */}
       {intel.executiveBrief && (
         <div className="bi-section bi-executive">
-          <h3 className="bi-section-title">Executive Brief</h3>
+          <h3 className="bi-section-title">{t("bidStrategy", "executiveBriefTitle")}</h3>
           <p>{intel.executiveBrief}</p>
         </div>
       )}

@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 import { API_URL } from "../api";
 import type { TenderDetail } from "../types";
+import { useLanguage } from "../i18n/LanguageContext";
+import { translations } from "../i18n/translations";
 
 type Props = {
   tender: TenderDetail;
@@ -30,17 +32,25 @@ type WizardData = {
   methodology: string;
 };
 
+type WizardKey = keyof (typeof translations)["en"]["proposalWizard"];
+
 type Step = {
-  title: string;
-  description: string;
+  titleKey: WizardKey;
+  descKey: WizardKey;
   icon: React.ReactNode;
 };
 
 const STEPS: Step[] = [
-  { title: "Language & Bid Price",  description: "Choose language and set your proposed bid amount.",       icon: <FileText size={20} /> },
-  { title: "Timeline & Terms",      description: "Completion timeline, warranty, and payment preferences.",  icon: <ChevronRight size={20} /> },
-  { title: "Project Manager",       description: "Key personnel and technical methodology overview.",        icon: <Users size={20} /> },
-  { title: "Generate Proposal",     description: "AI will generate your full submission-ready proposal.",    icon: <BrainCircuit size={20} /> },
+  { titleKey: "step1Title", descKey: "step1Desc", icon: <FileText size={20} /> },
+  { titleKey: "step2Title", descKey: "step2Desc", icon: <ChevronRight size={20} /> },
+  { titleKey: "step3Title", descKey: "step3Desc", icon: <Users size={20} /> },
+  { titleKey: "step4Title", descKey: "step4Desc", icon: <BrainCircuit size={20} /> },
+];
+
+const PROPOSAL_SECTION_KEYS: WizardKey[] = [
+  "sectionCoverLetter", "sectionCompanyIntro", "sectionUnderstanding", "sectionTechnicalApproach",
+  "sectionImplementationPlan", "sectionProjectTeam", "sectionEquipmentPlan", "sectionPastProjects",
+  "sectionFinancialProposal", "sectionQA", "sectionCompliance", "sectionWinProb",
 ];
 
 function extractWinProbability(text: string): number | null {
@@ -55,6 +65,7 @@ function winProbColor(prob: number): string {
 }
 
 export function ProposalWizard({ tender, token, onComplete, onClose }: Props) {
+  const { t } = useLanguage();
   const [step, setStep] = useState(0);
   const [generating, setGenerating] = useState(false);
   const [streamedText, setStreamedText] = useState("");
@@ -93,11 +104,11 @@ export function ProposalWizard({ tender, token, onComplete, onClose }: Props) {
 
       if (!response.ok) {
         const err = await response.json().catch(() => ({}));
-        throw new Error(err?.detail ?? "Generation failed.");
+        throw new Error(err?.detail ?? t("proposalWizard", "generationFailed"));
       }
 
       const reader = response.body?.getReader();
-      if (!reader) throw new Error("No response stream.");
+      if (!reader) throw new Error(t("proposalWizard", "noResponseStream"));
 
       const decoder = new TextDecoder();
       let full = "";
@@ -126,7 +137,7 @@ export function ProposalWizard({ tender, token, onComplete, onClose }: Props) {
       setDone(true);
       onComplete(full);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Proposal generation failed.");
+      setError(err instanceof Error ? err.message : t("proposalWizard", "proposalGenerationFailed"));
     } finally {
       setGenerating(false);
     }
@@ -141,7 +152,7 @@ export function ProposalWizard({ tender, token, onComplete, onClose }: Props) {
         {/* Header */}
         <div className="wizard-header">
           <div>
-            <p className="eyebrow">AI Proposal Generator</p>
+            <p className="eyebrow">{t("proposalWizard", "eyebrow")}</p>
             <h2>{tender.title}</h2>
           </div>
           <button className="icon-btn" onClick={onClose} disabled={generating}><X size={18} /></button>
@@ -156,7 +167,7 @@ export function ProposalWizard({ tender, token, onComplete, onClose }: Props) {
               onClick={() => !generating && i < step && setStep(i)}
             >
               <div className="step-circle">{i < step ? "✓" : i + 1}</div>
-              <span className="step-label">{s.title}</span>
+              <span className="step-label">{t("proposalWizard", s.titleKey)}</span>
             </div>
           ))}
         </div>
@@ -165,22 +176,22 @@ export function ProposalWizard({ tender, token, onComplete, onClose }: Props) {
         <div className="wizard-body">
           {step === 0 && (
             <div className="wizard-section">
-              <h3>Language & Bid Price</h3>
-              <p className="muted">These settings guide AI language and financial references in the proposal.</p>
+              <h3>{t("proposalWizard", "step1Heading")}</h3>
+              <p className="muted">{t("proposalWizard", "step1Body")}</p>
               <div className="field-row">
                 <label>
-                  Proposal Language
+                  {t("proposalWizard", "proposalLanguageLabel")}
                   <select value={data.language} onChange={(e) => setField("language", e.target.value)}>
-                    <option value="english">English</option>
-                    <option value="bangla">বাংলা (Bangla)</option>
+                    <option value="english">{t("proposalWizard", "englishOption")}</option>
+                    <option value="bangla">{t("proposalWizard", "banglaOption")}</option>
                   </select>
                 </label>
                 <label>
-                  Proposed Bid Price (BDT)
+                  {t("proposalWizard", "bidPriceLabel")}
                   <input
                     value={data.bid_price}
                     onChange={(e) => setField("bid_price", e.target.value)}
-                    placeholder="e.g. 2,50,00,000"
+                    placeholder={t("proposalWizard", "bidPricePlaceholder")}
                   />
                 </label>
               </div>
@@ -189,32 +200,32 @@ export function ProposalWizard({ tender, token, onComplete, onClose }: Props) {
 
           {step === 1 && (
             <div className="wizard-section">
-              <h3>Timeline & Commercial Terms</h3>
-              <p className="muted">AI will include these in the Implementation Plan and Financial Proposal sections.</p>
+              <h3>{t("proposalWizard", "step2Heading")}</h3>
+              <p className="muted">{t("proposalWizard", "step2Body")}</p>
               <div className="field-row">
                 <label>
-                  Proposed Completion Time
+                  {t("proposalWizard", "completionTimeLabel")}
                   <input
                     value={data.timeline}
                     onChange={(e) => setField("timeline", e.target.value)}
-                    placeholder="e.g. 18 months"
+                    placeholder={t("proposalWizard", "completionTimePlaceholder")}
                   />
                 </label>
                 <label>
-                  Warranty / Defect Liability Period
+                  {t("proposalWizard", "warrantyLabel")}
                   <input
                     value={data.warranty}
                     onChange={(e) => setField("warranty", e.target.value)}
-                    placeholder="e.g. 12 months"
+                    placeholder={t("proposalWizard", "warrantyPlaceholder")}
                   />
                 </label>
               </div>
               <label>
-                Payment Terms Preference
+                {t("proposalWizard", "paymentTermsLabel")}
                 <input
                   value={data.payment_terms}
                   onChange={(e) => setField("payment_terms", e.target.value)}
-                  placeholder="e.g. Monthly progress payment, milestone-based..."
+                  placeholder={t("proposalWizard", "paymentTermsPlaceholder")}
                 />
               </label>
             </div>
@@ -222,23 +233,23 @@ export function ProposalWizard({ tender, token, onComplete, onClose }: Props) {
 
           {step === 2 && (
             <div className="wizard-section">
-              <h3>Key Personnel & Methodology</h3>
-              <p className="muted">Additional context to personalize the team and technical approach sections.</p>
+              <h3>{t("proposalWizard", "step3Heading")}</h3>
+              <p className="muted">{t("proposalWizard", "step3Body")}</p>
               <label>
-                Project Manager for this Tender
+                {t("proposalWizard", "projectManagerLabel")}
                 <input
                   value={data.project_manager}
                   onChange={(e) => setField("project_manager", e.target.value)}
-                  placeholder="Name and designation, e.g. Engr. Rahman Hossain (Senior PM)"
+                  placeholder={t("proposalWizard", "projectManagerPlaceholder")}
                 />
               </label>
               <label style={{ marginTop: 12 }}>
-                Technical Approach Notes (optional)
+                {t("proposalWizard", "methodologyLabel")}
                 <textarea
                   value={data.methodology}
                   onChange={(e) => setField("methodology", e.target.value)}
                   rows={4}
-                  placeholder="Any special methodology, unique approach, local partnerships, or key differentiators you want highlighted..."
+                  placeholder={t("proposalWizard", "methodologyPlaceholder")}
                 />
               </label>
             </div>
@@ -249,22 +260,17 @@ export function ProposalWizard({ tender, token, onComplete, onClose }: Props) {
               {!generating && !done && (
                 <div className="wizard-generate-ready">
                   <div className="wizard-ready-icon"><BrainCircuit size={36} /></div>
-                  <h3>Ready to Generate</h3>
-                  <p className="muted">
-                    AI will create a complete, submission-ready proposal using your company knowledge base
-                    and the tender analysis. This typically takes 30–60 seconds.
-                  </p>
+                  <h3>{t("proposalWizard", "readyHeading")}</h3>
+                  <p className="muted">{t("proposalWizard", "readyBody")}</p>
                   <ul className="proposal-sections-list">
-                    {["Cover Letter", "Company Introduction", "Understanding of Requirements", "Technical Approach & Methodology",
-                      "Implementation Plan", "Project Team Structure", "Equipment Plan", "Past Similar Projects",
-                      "Financial Proposal", "Quality Assurance", "Compliance Declaration", "Win Probability Assessment"].map((s) => (
-                      <li key={s}>✓ {s}</li>
+                    {PROPOSAL_SECTION_KEYS.map((key) => (
+                      <li key={key}>✓ {t("proposalWizard", key)}</li>
                     ))}
                   </ul>
                   {error && <p className="notice error">{error}</p>}
                   <button className="primary full-button" onClick={generate}>
                     <BrainCircuit size={18} />
-                    Generate Full Proposal
+                    {t("proposalWizard", "generateFullProposal")}
                   </button>
                 </div>
               )}
@@ -273,7 +279,7 @@ export function ProposalWizard({ tender, token, onComplete, onClose }: Props) {
                 <div className="wizard-streaming">
                   <div className="stream-status">
                     <Loader size={16} className="spinning" />
-                    Generating your proposal... please wait
+                    {t("proposalWizard", "generatingStatus")}
                   </div>
                   <textarea
                     className="stream-output"
@@ -297,14 +303,18 @@ export function ProposalWizard({ tender, token, onComplete, onClose }: Props) {
                       </div>
                       <div>
                         <strong style={{ color: winProbColor(winProb), fontSize: 18 }}>
-                          {winProb >= 70 ? "High Win Probability" : winProb >= 50 ? "Moderate Win Probability" : "Low Win Probability"}
+                          {winProb >= 70
+                            ? t("proposalWizard", "highWinProb")
+                            : winProb >= 50
+                              ? t("proposalWizard", "moderateWinProb")
+                              : t("proposalWizard", "lowWinProb")}
                         </strong>
-                        <p className="muted" style={{ margin: 0 }}>AI-assessed win probability for this bid</p>
+                        <p className="muted" style={{ margin: 0 }}>{t("proposalWizard", "winProbCaption")}</p>
                       </div>
                     </div>
                   )}
                   <p className="notice" style={{ marginTop: 12 }}>
-                    Proposal generated and saved. Scroll down in the tender detail to read it in full.
+                    {t("proposalWizard", "generatedSavedNotice")}
                   </p>
                   <textarea
                     className="stream-output"
@@ -313,7 +323,7 @@ export function ProposalWizard({ tender, token, onComplete, onClose }: Props) {
                     value={streamedText}
                   />
                   <button className="primary full-button" onClick={onClose} style={{ marginTop: 8 }}>
-                    Close &amp; View Proposal
+                    {t("proposalWizard", "closeAndView")}
                   </button>
                 </div>
               )}
@@ -325,13 +335,13 @@ export function ProposalWizard({ tender, token, onComplete, onClose }: Props) {
         {step < 3 && (
           <div className="wizard-footer">
             <button onClick={() => setStep((s) => Math.max(0, s - 1))} disabled={step === 0}>
-              <ChevronLeft size={16} /> Back
+              <ChevronLeft size={16} /> {t("proposalWizard", "back")}
             </button>
             <button
               className="primary"
               onClick={() => isLastStep ? generate() : setStep((s) => s + 1)}
             >
-              {isLastStep ? "Generate Proposal" : "Next"}
+              {isLastStep ? t("proposalWizard", "generateProposal") : t("proposalWizard", "next")}
               {!isLastStep && <ChevronRight size={16} />}
             </button>
           </div>
