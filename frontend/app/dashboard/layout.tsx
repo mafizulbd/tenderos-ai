@@ -7,9 +7,11 @@ import { Sidebar } from "../components/Sidebar";
 import { PlanWidget } from "../components/PlanWidget";
 import { useApp } from "../context/AppContext";
 import { apiRequest } from "../api";
+import { useLanguage } from "../i18n/LanguageContext";
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const { token, user, organization, subscription, loadTenders, loadSubscription, logout } = useApp();
+  const { t } = useLanguage();
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const [resendState, setResendState] = useState<"idle" | "sending" | "sent">("idle");
@@ -49,17 +51,15 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       <section className="main-area">
         <header className="topbar">
           <div>
-            <p className="eyebrow">Dashboard</p>
-            <h1>{organization?.name || "Tender Workspace"}</h1>
-            <p className="muted">
-              Upload tenders, track bids, and export submission-ready reports for Bangladesh procurement.
-            </p>
+            <p className="eyebrow">{t("dashboard", "topbarLabel")}</p>
+            <h1>{organization?.name || t("dashboard", "defaultWorkspaceName")}</h1>
+            <p className="muted">{t("dashboard", "subtitle")}</p>
           </div>
           <div className="topbar-actions">
             <PlanWidget user={user} subscription={subscription} />
             <button onClick={refresh} disabled={refreshing}>
               <RefreshCw size={18} className={refreshing ? "spinning" : ""} />
-              Refresh
+              {t("common", "refresh")}
             </button>
           </div>
         </header>
@@ -68,19 +68,17 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           <div className="notice warn verify-banner">
             <Mail size={16} />
             <span>
-              Verify your email to secure your account.
-              {resendState === "sent"
-                ? " Verification email sent — check your inbox."
-                : ""}
+              {t("common", "verifyEmailNotice")}
+              {resendState === "sent" ? ` ${t("common", "verificationSentNotice")}` : ""}
             </span>
             <div className="verify-banner-actions">
               {resendState !== "sent" && (
                 <button onClick={resendVerification} disabled={resendState === "sending"}>
-                  {resendState === "sending" ? "Sending..." : "Resend email"}
+                  {resendState === "sending" ? t("common", "sending") : t("common", "resendEmail")}
                 </button>
               )}
               <button className="link-button" onClick={() => setBannerDismissed(true)}>
-                Dismiss
+                {t("common", "dismiss")}
               </button>
             </div>
           </div>

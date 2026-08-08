@@ -388,6 +388,48 @@ a:hover {
   border-color: rgba(255, 255, 255, 0.16);
 }
 
+.lang-toggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.lang-toggle button {
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: #d4dbe7;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.lang-toggle button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.lang-toggle button.active {
+  border-color: var(--blue);
+  background: rgba(53, 87, 232, 0.28);
+  color: #ffffff;
+}
+
+.auth-panel .lang-toggle {
+  margin-bottom: 4px;
+}
+
+.auth-panel .lang-toggle button {
+  border-color: var(--border, #d9deec);
+  background: #fff;
+  color: #445;
+}
+
+.auth-panel .lang-toggle button.active {
+  border-color: var(--blue);
+  background: #e8f1ff;
+  color: var(--blue-dark);
+}
+
 /* ---------- Main area ---------- */
 
 .main-area {

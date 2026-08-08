@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 import { apiRequest } from "../api";
 import type { User } from "../types";
+import { useLanguage } from "../i18n/LanguageContext";
+import { LanguageToggle } from "./LanguageToggle";
 
 type AuthMode = "login" | "signup" | "forgot";
 
@@ -18,6 +20,7 @@ type Props = {
 };
 
 export function AuthPage({ onLogin }: Props) {
+  const { t } = useLanguage();
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -37,7 +40,7 @@ export function AuthPage({ onLogin }: Props) {
       setPassword("");
       onLogin(data.token, data.user);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Authentication failed.");
+      setError(err instanceof Error ? err.message : t("auth", "authFailed"));
     } finally {
       setLoading(false);
     }
@@ -54,7 +57,7 @@ export function AuthPage({ onLogin }: Props) {
       });
       setForgotSent(true);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Could not send reset email.");
+      setError(err instanceof Error ? err.message : t("auth", "resetFailed"));
     } finally {
       setLoading(false);
     }
@@ -74,38 +77,37 @@ export function AuthPage({ onLogin }: Props) {
           <FileSearch size={28} />
         </div>
         <p className="eyebrow">TenderOS AI</p>
-        <h1>Tender command center for suppliers</h1>
-        <p>
-          Analyze tender documents, extract compliance requirements, and prepare a submission
-          draft inside a private workspace.
-        </p>
+        <h1>{t("auth", "heroTitle")}</h1>
+        <p>{t("auth", "heroSubtitle")}</p>
         <div className="auth-points">
           <span>
-            <ShieldCheck size={18} /> Private tender library
+            <ShieldCheck size={18} /> {t("auth", "pointPrivateLibrary")}
           </span>
           <span>
-            <CheckCircle2 size={18} /> Compliance matrix
+            <CheckCircle2 size={18} /> {t("auth", "pointComplianceMatrix")}
           </span>
           <span>
-            <ArrowDownToLine size={18} /> DOCX report export
+            <ArrowDownToLine size={18} /> {t("auth", "pointDocxExport")}
           </span>
         </div>
       </section>
 
       <section className="auth-panel">
+        <LanguageToggle />
+
         {authMode !== "forgot" && (
           <div className="segmented">
             <button
               className={authMode === "login" ? "active" : ""}
               onClick={() => switchMode("login")}
             >
-              Login
+              {t("auth", "login")}
             </button>
             <button
               className={authMode === "signup" ? "active" : ""}
               onClick={() => switchMode("signup")}
             >
-              Sign up
+              {t("auth", "signup")}
             </button>
           </div>
         )}
@@ -114,17 +116,16 @@ export function AuthPage({ onLogin }: Props) {
           forgotSent ? (
             <>
               <p className="notice">
-                If an account exists for <strong>{email}</strong>, a password reset link has been
-                sent. Check your inbox.
+                {t("auth", "resetSentPrefix")} <strong>{email}</strong>, {t("auth", "resetSentSuffix")}
               </p>
               <button className="primary full-button" onClick={() => switchMode("login")}>
-                Back to login
+                {t("auth", "backToLogin")}
               </button>
             </>
           ) : (
             <>
               <label>
-                Email
+                {t("auth", "email")}
                 <input
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -138,17 +139,17 @@ export function AuthPage({ onLogin }: Props) {
                 onClick={requestPasswordReset}
                 disabled={loading || !email}
               >
-                {loading ? "Please wait..." : "Send reset link"}
+                {loading ? t("common", "pleaseWait") : t("auth", "sendResetLink")}
               </button>
               <button className="link-button" onClick={() => switchMode("login")}>
-                Back to login
+                {t("auth", "backToLogin")}
               </button>
             </>
           )
         ) : (
           <>
             <label>
-              Email
+              {t("auth", "email")}
               <input
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -157,7 +158,7 @@ export function AuthPage({ onLogin }: Props) {
             </label>
 
             <label>
-              Password
+              {t("auth", "password")}
               <input
                 type="password"
                 value={password}
@@ -168,7 +169,7 @@ export function AuthPage({ onLogin }: Props) {
 
             {authMode === "login" && (
               <button className="link-button" onClick={() => switchMode("forgot")}>
-                Forgot password?
+                {t("auth", "forgotPassword")}
               </button>
             )}
 
@@ -176,7 +177,7 @@ export function AuthPage({ onLogin }: Props) {
 
             <button className="primary full-button" onClick={authenticate} disabled={loading}>
               <UserRound size={18} />
-              {loading ? "Please wait..." : authMode === "login" ? "Login" : "Create account"}
+              {loading ? t("common", "pleaseWait") : authMode === "login" ? t("auth", "login") : t("auth", "createAccount")}
             </button>
           </>
         )}
