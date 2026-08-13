@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from database import SessionLocal
 from deps import _get_knowledge_base, get_current_membership, get_current_user, get_db
 from models import Contract, Notification, OrgMembership, Tender, User
+from timeutils import utcnow
 
 router = APIRouter()
 
@@ -24,7 +25,7 @@ def _computed_reminders(db: Session, current_user: User, membership: OrgMembersh
     """Deadline/high-score/cert/contract-expiry reminders, recomputed on every
     call (not persisted — there's nothing meaningful to mark 'read' on a fact
     like 'this deadline is in 3 days', it's just always true until it isn't)."""
-    now = datetime.utcnow()
+    now = utcnow()
     reminders: list[dict] = []
 
     upcoming = (
@@ -142,7 +143,7 @@ def send_deadline_reminders() -> int:
     """
     from sms_client import send_sms, send_whatsapp
 
-    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start = utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     db = SessionLocal()
     sent = 0
     try:
@@ -183,7 +184,7 @@ def send_deadline_reminders() -> int:
                     title=f"Reminder sent: {r['title']}",
                     message=r["message"],
                     urgency=r["urgency"],
-                    read_at=datetime.utcnow(),  # bookkeeping/audit trail, not an actionable unread item
+                    read_at=utcnow(),  # bookkeeping/audit trail, not an actionable unread item
                 ))
                 db.commit()
                 sent += 1
@@ -223,7 +224,7 @@ def list_notifications(
     def sort_key(r: dict):
         unread = 0 if (not r["persisted"] or r["read_at"] is None) else 1
         urgency_rank = urgency_order.get(r["urgency"], 9)
-        ts = r.get("created_at") or r.get("deadline") or datetime.utcnow()
+        ts = r.get("created_at") or r.get("deadline") or utcnow()
         return (unread, urgency_rank, -ts.timestamp())
 
     combined.sort(key=sort_key)
@@ -245,7 +246,7 @@ def mark_notification_read(
     ).first()
     if not notification:
         raise HTTPException(status_code=404, detail="Notification not found.")
-    notification.read_at = datetime.utcnow()
+    notification.read_at = utcnow()
     db.commit()
     return _notification_response(notification)
 
@@ -255,7 +256,7 @@ def mark_all_notifications_read(
     db: Session = Depends(get_db),
     membership: OrgMembership = Depends(get_current_membership),
 ):
-    now = datetime.utcnow()
+    now = utcnow()
     db.query(Notification).filter(
         Notification.organization_id == membership.organization_id,
         Notification.user_id == membership.user_id,

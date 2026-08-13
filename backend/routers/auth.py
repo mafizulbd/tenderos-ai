@@ -3,7 +3,7 @@ email verification, and password reset."""
 
 import json
 import secrets
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
@@ -19,6 +19,7 @@ from schemas import (
     AuthRequest, ForgotPasswordRequest, KnowledgeBaseUpdate, ProfileUpdate,
     ResetPasswordRequest, VerifyEmailRequest,
 )
+from timeutils import utcnow
 
 router = APIRouter()
 
@@ -45,7 +46,7 @@ def signup(request: Request, payload: AuthRequest, db: Session = Depends(get_db)
         monthly_tenders_used=0,
         email_verified=False,
         email_verification_token=verification_token,
-        email_verification_expires_at=datetime.utcnow() + timedelta(hours=EMAIL_VERIFICATION_TTL_HOURS),
+        email_verification_expires_at=utcnow() + timedelta(hours=EMAIL_VERIFICATION_TTL_HOURS),
     )
     db.add(user)
     db.flush()
@@ -121,7 +122,7 @@ def verify_email(request: Request, payload: VerifyEmailRequest, db: Session = De
     user = db.query(User).filter(User.email_verification_token == payload.token).first()
     if not user:
         raise HTTPException(status_code=400, detail="Invalid or expired verification link.")
-    if user.email_verification_expires_at and user.email_verification_expires_at < datetime.utcnow():
+    if user.email_verification_expires_at and user.email_verification_expires_at < utcnow():
         raise HTTPException(status_code=400, detail="This verification link has expired. Request a new one.")
 
     user.email_verified = True
@@ -142,7 +143,7 @@ def resend_verification(
         return {"detail": "Email already verified."}
 
     current_user.email_verification_token = secrets.token_urlsafe(32)
-    current_user.email_verification_expires_at = datetime.utcnow() + timedelta(hours=EMAIL_VERIFICATION_TTL_HOURS)
+    current_user.email_verification_expires_at = utcnow() + timedelta(hours=EMAIL_VERIFICATION_TTL_HOURS)
     db.commit()
     send_verification_email(current_user.email, current_user.email_verification_token)
     return {"detail": "Verification email sent."}
@@ -162,7 +163,7 @@ def forgot_password(request: Request, payload: ForgotPasswordRequest, db: Sessio
     user = db.query(User).filter(User.email == email).first()
     if user:
         user.password_reset_token = secrets.token_urlsafe(32)
-        user.password_reset_expires_at = datetime.utcnow() + timedelta(hours=PASSWORD_RESET_TTL_HOURS)
+        user.password_reset_expires_at = utcnow() + timedelta(hours=PASSWORD_RESET_TTL_HOURS)
         db.commit()
         send_password_reset_email(user.email, user.password_reset_token)
     return generic
@@ -174,7 +175,7 @@ def reset_password(request: Request, payload: ResetPasswordRequest, db: Session 
     user = db.query(User).filter(User.password_reset_token == payload.token).first()
     if not user:
         raise HTTPException(status_code=400, detail="Invalid or expired reset link.")
-    if user.password_reset_expires_at and user.password_reset_expires_at < datetime.utcnow():
+    if user.password_reset_expires_at and user.password_reset_expires_at < utcnow():
         raise HTTPException(status_code=400, detail="This reset link has expired. Request a new one.")
 
     user.password_hash = hash_password(payload.new_password)

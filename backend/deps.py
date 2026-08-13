@@ -24,6 +24,7 @@ from models import (
     Comment, Contract, Notification, OrgMembership, Organization,
     Task as TaskModel, Tender, User, Vendor,
 )
+from timeutils import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +99,7 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 
 def _token_expiry() -> datetime:
-    return datetime.utcnow() + timedelta(days=TOKEN_TTL_DAYS)
+    return utcnow() + timedelta(days=TOKEN_TTL_DAYS)
 
 
 def auth_response(user: User, org: Organization) -> dict:
@@ -130,7 +131,7 @@ def get_current_user(
     if not user:
         raise HTTPException(status_code=401, detail="Invalid authentication token.")
 
-    if user.token_expires_at and user.token_expires_at < datetime.utcnow():
+    if user.token_expires_at and user.token_expires_at < utcnow():
         raise HTTPException(status_code=401, detail="Session expired. Please log in again.")
 
     user.token_expires_at = _token_expiry()
@@ -213,7 +214,7 @@ def _get_org_vendor(vendor_id: int, membership: OrgMembership, db: Session) -> V
 
 
 def _reset_monthly_if_needed(org: Organization, db: Session) -> None:
-    now = datetime.utcnow()
+    now = utcnow()
     if (
         org.monthly_reset_at is None
         or org.monthly_reset_at.month != now.month

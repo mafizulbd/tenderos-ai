@@ -1,7 +1,8 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 from unittest.mock import patch
 
 from tests.test_tenders import MOCK_RESULT, _txt_file
+from timeutils import utcnow
 
 
 def _create_tender(client, headers, title="Calendar Test Tender", deadline=None):
@@ -20,7 +21,7 @@ def _create_tender(client, headers, title="Calendar Test Tender", deadline=None)
 
 
 def _iso(days_from_now: int) -> str:
-    return (datetime.utcnow() + timedelta(days=days_from_now)).strftime("%Y-%m-%d")
+    return (utcnow() + timedelta(days=days_from_now)).strftime("%Y-%m-%d")
 
 
 # --- Event-driven notifications ------------------------------------------------

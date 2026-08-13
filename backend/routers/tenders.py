@@ -3,7 +3,6 @@ delete, DOCX/PDF export, AI proposal wizard, AI bid strategy."""
 
 import asyncio
 import threading
-from datetime import datetime
 from io import BytesIO
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
@@ -24,6 +23,7 @@ from hermes_client import (
 )
 from models import OrgMembership, Tender, User
 from schemas import AssistantChatRequest, ProposalWizardRequest, ReanalyzeRequest, TenderUpdate
+from timeutils import utcnow
 
 router = APIRouter()
 
@@ -373,7 +373,7 @@ def export_docx(
         doc.add_paragraph(f"Submission Deadline: {tender.deadline.strftime('%d %B %Y')}")
     if tender.bid_score is not None:
         doc.add_paragraph(f"AI Bid Score: {tender.bid_score}/100")
-    doc.add_paragraph(f"Generated: {datetime.utcnow().strftime('%d %B %Y')}")
+    doc.add_paragraph(f"Generated: {utcnow().strftime('%d %B %Y')}")
 
     sections = [
         ("Executive Summary",           tender.summary),

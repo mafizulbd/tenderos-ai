@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Boolean, UniqueConstraint
-from datetime import datetime
 from database import Base
+from timeutils import utcnow
 
 
 class Organization(Base):
@@ -13,7 +13,7 @@ class Organization(Base):
     monthly_tenders_used = Column(Integer, default=0)
     monthly_reset_at = Column(DateTime, nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
 
 class OrgMembership(Base):
@@ -25,7 +25,7 @@ class OrgMembership(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     role = Column(String(20), nullable=False, default="member")     # owner / admin / member
     status = Column(String(20), nullable=False, default="active")   # active / removed
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
 
 class OrgInvite(Base):
@@ -38,7 +38,7 @@ class OrgInvite(Base):
     token = Column(String(255), unique=True, nullable=False, index=True)
     invited_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     status = Column(String(20), nullable=False, default="pending")  # pending / accepted / revoked / expired
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
     expires_at = Column(DateTime, nullable=True)
 
 
@@ -61,7 +61,7 @@ class User(Base):
 
     token_expires_at = Column(DateTime, nullable=True)
     knowledge_base = Column(Text, default="{}")   # JSON: past_projects, team, equipment, certs
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
     email_verified = Column(Boolean, default=False)
     email_verification_token = Column(String(255), nullable=True, index=True)
@@ -105,7 +105,7 @@ class Tender(Base):
     personalized_proposal = Column(Text)   # AI-generated full proposal using company KB
     bid_strategy = Column(Text)             # AI bid strategy + compliance + risk heatmap
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
 
 class ApprovalRequest(Base):
@@ -118,7 +118,7 @@ class ApprovalRequest(Base):
     status = Column(String(20), nullable=False, default="pending")  # pending/approved/rejected/cancelled
     reviewer_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     reviewer_note = Column(Text, default="")
-    requested_at = Column(DateTime, default=datetime.utcnow)
+    requested_at = Column(DateTime, default=utcnow)
     reviewed_at = Column(DateTime, nullable=True)
 
 
@@ -131,7 +131,7 @@ class Comment(Base):
     entity_id = Column(Integer, nullable=False, index=True)
     author_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     body = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, nullable=True)
 
 
@@ -148,7 +148,7 @@ class Task(Base):
     created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     status = Column(String(20), nullable=False, default="open")    # open/in_progress/done/cancelled
     due_date = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, nullable=True)
 
 
@@ -166,7 +166,7 @@ class Vendor(Base):
     rating = Column(Integer, nullable=True)          # 1-5
     notes = Column(Text, default="")
     created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, nullable=True)
 
 
@@ -179,7 +179,7 @@ class TenderVendorLink(Base):
     vendor_id = Column(Integer, ForeignKey("vendors.id"), nullable=False, index=True)
     role = Column(String(100), default="")           # e.g. subcontractor, supplier
     notes = Column(Text, default="")
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
 
 class Contract(Base):
@@ -199,7 +199,7 @@ class Contract(Base):
     performance_security = Column(String(255), default="")
     notes = Column(Text, default="")
     created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, nullable=True)
 
 
@@ -216,7 +216,7 @@ class Notification(Base):
     message = Column(Text, default="")
     urgency = Column(String(20), default="info")   # critical / warning / info
     read_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow)
 
 
 class DiscoveredTender(Base):
@@ -233,4 +233,4 @@ class DiscoveredTender(Base):
     estimated_value = Column(String(200), default="")
     url             = Column(String(500), default="")
     country         = Column(String(100), default="Bangladesh")
-    discovered_at   = Column(DateTime, default=datetime.utcnow)
+    discovered_at   = Column(DateTime, default=utcnow)

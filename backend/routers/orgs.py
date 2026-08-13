@@ -1,7 +1,7 @@
 """Organization / team routes: org profile, members, invites, subscription."""
 
 import secrets
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
@@ -13,6 +13,7 @@ from deps import (
 )
 from models import OrgInvite, OrgMembership, User
 from schemas import InviteCreate, MemberRoleUpdate, OrgUpdate
+from timeutils import utcnow
 
 router = APIRouter()
 
@@ -151,7 +152,7 @@ def create_invite(
         token=secrets.token_urlsafe(24),
         invited_by_user_id=membership.user_id,
         status="pending",
-        expires_at=datetime.utcnow() + timedelta(days=7),
+        expires_at=utcnow() + timedelta(days=7),
     )
     db.add(invite)
     db.commit()
@@ -209,7 +210,7 @@ def accept_invite(
         raise HTTPException(status_code=404, detail="Invite not found.")
     if invite.status != "pending":
         raise HTTPException(status_code=400, detail="This invite is no longer valid.")
-    if invite.expires_at and invite.expires_at < datetime.utcnow():
+    if invite.expires_at and invite.expires_at < utcnow():
         invite.status = "expired"
         db.commit()
         raise HTTPException(status_code=400, detail="This invite has expired.")
