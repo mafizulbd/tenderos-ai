@@ -124,10 +124,18 @@ export function TenderLibrary({ tenders, selectedId, token, onSelect, onDeleted 
             const bidInfo = BID_STATUS_LABELS[tender.bid_status] ?? BID_STATUS_LABELS.reviewing;
 
             return (
-              <button
+              <div
                 key={tender.id}
+                role="button"
+                tabIndex={0}
                 className={`tender-row ${selectedId === tender.id ? "active" : ""}`}
                 onClick={() => onSelect(tender.id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onSelect(tender.id);
+                  }
+                }}
               >
                 <div className="file-badge">
                   <FileText size={18} />
@@ -161,7 +169,7 @@ export function TenderLibrary({ tenders, selectedId, token, onSelect, onDeleted 
                 >
                   <Trash2 size={15} />
                 </button>
-              </button>
+              </div>
             );
           })}
         </div>
