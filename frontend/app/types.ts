@@ -43,8 +43,15 @@ export type OrgInvite = {
   created_at: string;
 };
 
+// Personnel/Certifications/ProjectExperience are backed by structured,
+// org-scoped DB tables (see backend/routers/company.py), not the
+// knowledge_base JSON blob. `id` is a stable client-side key for React and
+// in-progress edits; `serverId` is only set once the row has been persisted
+// (POSTed) to the backend — its absence means "unsaved draft".
+
 export type PastProject = {
   id: string;
+  serverId?: number;
   name: string;
   client: string;
   value: string;
@@ -55,6 +62,7 @@ export type PastProject = {
 
 export type TeamMember = {
   id: string;
+  serverId?: number;
   name: string;
   role: string;
   qualification: string;
@@ -70,6 +78,7 @@ export type Equipment = {
 
 export type Certification = {
   id: string;
+  serverId?: number;
   name: string;
   number: string;
   expiry: string;
@@ -80,16 +89,17 @@ export type TurnoverEntry = {
   amount: string;
 };
 
+// Equipment/turnover/registration basics still live in the User.knowledge_base
+// JSON blob — they weren't promoted to structured tables in this pass (see
+// PROJECT_AUDIT.md §9). Personnel/certifications/past projects moved out of
+// this type entirely; they're fetched/saved via /company/* instead.
 export type KnowledgeBase = {
   tin: string;
   bin: string;
   trade_license: string;
   trade_license_expiry: string;
   annual_turnover: TurnoverEntry[];
-  past_projects: PastProject[];
-  technical_team: TeamMember[];
   equipment: Equipment[];
-  certifications: Certification[];
 };
 
 export const EMPTY_KB: KnowledgeBase = {
@@ -102,10 +112,7 @@ export const EMPTY_KB: KnowledgeBase = {
     { year: "2023-24", amount: "" },
     { year: "2024-25", amount: "" },
   ],
-  past_projects: [],
-  technical_team: [],
   equipment: [],
-  certifications: [],
 };
 
 export type ApprovalStatus = "none" | "pending" | "approved" | "rejected";

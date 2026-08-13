@@ -21,8 +21,8 @@ from sqlalchemy.orm import Session
 
 from database import SessionLocal
 from models import (
-    Comment, Contract, Notification, OrgMembership, Organization,
-    Task as TaskModel, Tender, User, Vendor,
+    Certification, Comment, Contract, Notification, OrgMembership, Organization,
+    Personnel, ProjectExperience, Task as TaskModel, Tender, User, Vendor,
 )
 from timeutils import utcnow
 
@@ -207,6 +207,84 @@ def _get_org_vendor(vendor_id: int, membership: OrgMembership, db: Session) -> V
     if not vendor:
         raise HTTPException(status_code=404, detail="Vendor not found.")
     return vendor
+
+# ---------------------------------------------------------------------------
+# Structured company knowledge base (Personnel / Certifications / Projects)
+# ---------------------------------------------------------------------------
+
+
+def _can_modify_company_record(record, membership: OrgMembership) -> bool:
+    return membership.role in ("owner", "admin") or record.created_by_user_id == membership.user_id
+
+
+def _get_org_personnel(personnel_id: int, membership: OrgMembership, db: Session) -> Personnel:
+    row = db.query(Personnel).filter(
+        Personnel.id == personnel_id, Personnel.organization_id == membership.organization_id
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Personnel record not found.")
+    return row
+
+
+def _get_org_certification(certification_id: int, membership: OrgMembership, db: Session) -> Certification:
+    row = db.query(Certification).filter(
+        Certification.id == certification_id, Certification.organization_id == membership.organization_id
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Certification not found.")
+    return row
+
+
+def _get_org_project(project_id: int, membership: OrgMembership, db: Session) -> ProjectExperience:
+    row = db.query(ProjectExperience).filter(
+        ProjectExperience.id == project_id, ProjectExperience.organization_id == membership.organization_id
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Project experience record not found.")
+    return row
+
+
+def _merge_structured_company_data(kb: dict, organization_id: int, db: Session) -> dict:
+    """Overlay structured Personnel/Certification/ProjectExperience rows onto a
+    knowledge-base dict for AI prompt-building. Falls back to whatever's in the
+    JSON blob (kb) when an org hasn't migrated/populated the structured tables
+    yet, so this is safe to call unconditionally. Equipment/turnover/basics
+    still come from the blob only — not promoted to tables yet.
+    """
+    personnel = (
+        db.query(Personnel).filter(Personnel.organization_id == organization_id)
+        .order_by(Personnel.id.asc()).all()
+    )
+    if personnel:
+        kb["technical_team"] = [
+            {"name": p.name, "role": p.role or "", "qualification": p.qualification or "", "experience": p.experience or ""}
+            for p in personnel
+        ]
+
+    certifications = (
+        db.query(Certification).filter(Certification.organization_id == organization_id)
+        .order_by(Certification.id.asc()).all()
+    )
+    if certifications:
+        kb["certifications"] = [
+            {"name": c.name, "number": c.number or "", "expiry": c.expiry or ""}
+            for c in certifications
+        ]
+
+    projects = (
+        db.query(ProjectExperience).filter(ProjectExperience.organization_id == organization_id)
+        .order_by(ProjectExperience.id.asc()).all()
+    )
+    if projects:
+        kb["past_projects"] = [
+            {
+                "name": p.name, "client": p.client or "", "value": p.value or "",
+                "year": p.year or "", "duration": p.duration or "", "category": p.category or "",
+            }
+            for p in projects
+        ]
+
+    return kb
 
 # ---------------------------------------------------------------------------
 # Subscription / usage

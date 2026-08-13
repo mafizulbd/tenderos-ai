@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BookOpen, Plus, Save, Trash2 } from "lucide-react";
 import { apiRequest } from "../api";
 import type { Certification, Equipment, KnowledgeBase, PastProject, TeamMember } from "../types";
@@ -14,6 +14,8 @@ type Props = {
 
 type KbKey = keyof (typeof translations)["en"]["knowledgeBase"];
 
+type ServerRecord = { id: number; [key: string]: unknown };
+
 function uid() {
   return Math.random().toString(36).slice(2, 9);
 }
@@ -21,23 +23,100 @@ function uid() {
 export function KnowledgeBasePanel({ token }: Props) {
   const { t } = useLanguage();
   const [kb, setKb] = useState<KnowledgeBase>(EMPTY_KB);
+  const [projects, setProjects] = useState<PastProject[]>([]);
+  const [team, setTeam] = useState<TeamMember[]>([]);
+  const [certs, setCerts] = useState<Certification[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [isError, setIsError] = useState(false);
   const [activeTab, setActiveTab] = useState<"basics" | "projects" | "team" | "equipment" | "certs">("basics");
 
+  // Server ids present at last successful load/save, so `save()` can tell
+  // which rows the user removed locally and needs to DELETE upstream.
+  const projectServerIds = useRef<Set<number>>(new Set());
+  const teamServerIds = useRef<Set<number>>(new Set());
+  const certServerIds = useRef<Set<number>>(new Set());
+
   useEffect(() => {
-    apiRequest<KnowledgeBase>("/me/knowledge-base", {}, token)
-      .then((data) => {
-        setKb({ ...EMPTY_KB, ...data });
+    Promise.all([
+      apiRequest<KnowledgeBase>("/me/knowledge-base", {}, token).catch(() => EMPTY_KB),
+      apiRequest<ServerRecord[]>("/company/projects", {}, token).catch(() => []),
+      apiRequest<ServerRecord[]>("/company/personnel", {}, token).catch(() => []),
+      apiRequest<ServerRecord[]>("/company/certifications", {}, token).catch(() => []),
+    ])
+      .then(([kbData, projectRows, teamRows, certRows]) => {
+        setKb({ ...EMPTY_KB, ...kbData });
+
+        const mappedProjects = projectRows.map((r) => ({
+          id: String(r.id), serverId: r.id as number,
+          name: r.name as string, client: r.client as string, value: r.value as string,
+          year: r.year as string, duration: r.duration as string, category: r.category as string,
+        }));
+        setProjects(mappedProjects);
+        projectServerIds.current = new Set(mappedProjects.map((p) => p.serverId!));
+
+        const mappedTeam = teamRows.map((r) => ({
+          id: String(r.id), serverId: r.id as number,
+          name: r.name as string, role: r.role as string,
+          qualification: r.qualification as string, experience: r.experience as string,
+        }));
+        setTeam(mappedTeam);
+        teamServerIds.current = new Set(mappedTeam.map((m) => m.serverId!));
+
+        const mappedCerts = certRows.map((r) => ({
+          id: String(r.id), serverId: r.id as number,
+          name: r.name as string, number: r.number as string, expiry: r.expiry as string,
+        }));
+        setCerts(mappedCerts);
+        certServerIds.current = new Set(mappedCerts.map((c) => c.serverId!));
       })
-      .catch(() => setKb(EMPTY_KB))
       .finally(() => setLoading(false));
   }, [token]);
 
   function setField<K extends keyof KnowledgeBase>(key: K, value: KnowledgeBase[K]) {
     setKb((prev) => ({ ...prev, [key]: value }));
+  }
+
+  /** Syncs one entity list (create drafts, patch existing rows, delete removed
+   * ones) against its /company/* endpoint. Shared across projects/team/certs
+   * since all three follow the same create-or-update-then-diff-deletes shape. */
+  async function syncEntityList<T extends { id: string; serverId?: number; name: string }>(
+    endpoint: string,
+    items: T[],
+    knownServerIds: React.MutableRefObject<Set<number>>,
+    toPayload: (item: T) => Record<string, unknown>,
+  ): Promise<T[]> {
+    const stillPresent = new Set<number>();
+    const synced: T[] = [];
+
+    for (const item of items) {
+      const name = item.name.trim();
+      if (item.serverId) {
+        stillPresent.add(item.serverId);
+        await apiRequest(`${endpoint}/${item.serverId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(toPayload(item)),
+        }, token);
+        synced.push(item);
+      } else if (name) {
+        const created = await apiRequest<ServerRecord>(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(toPayload(item)),
+        }, token);
+        stillPresent.add(created.id);
+        synced.push({ ...item, serverId: created.id });
+      }
+      // Blank-name drafts that were never persisted are silently dropped.
+    }
+
+    const removed = [...knownServerIds.current].filter((id) => !stillPresent.has(id));
+    await Promise.all(removed.map((id) => apiRequest(`${endpoint}/${id}`, { method: "DELETE" }, token)));
+
+    knownServerIds.current = stillPresent;
+    return synced;
   }
 
   async function save() {
@@ -49,6 +128,17 @@ export function KnowledgeBasePanel({ token }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ knowledge_base: kb }),
       }, token);
+
+      setProjects(await syncEntityList("/company/projects", projects, projectServerIds, (p) => ({
+        name: p.name, client: p.client, value: p.value, year: p.year, duration: p.duration, category: p.category,
+      })));
+      setTeam(await syncEntityList("/company/personnel", team, teamServerIds, (m) => ({
+        name: m.name, role: m.role, qualification: m.qualification, experience: m.experience,
+      })));
+      setCerts(await syncEntityList("/company/certifications", certs, certServerIds, (c) => ({
+        name: c.name, number: c.number, expiry: c.expiry,
+      })));
+
       setIsError(false);
       setMessage(t("knowledgeBase", "saveSuccess"));
     } catch (err: unknown) {
@@ -62,28 +152,28 @@ export function KnowledgeBasePanel({ token }: Props) {
   // Past Projects
   function addProject() {
     const p: PastProject = { id: uid(), name: "", client: "", value: "", year: "", duration: "", category: "" };
-    setField("past_projects", [...kb.past_projects, p]);
+    setProjects([...projects, p]);
   }
   function updateProject(id: string, field: keyof PastProject, val: string) {
-    setField("past_projects", kb.past_projects.map((p) => p.id === id ? { ...p, [field]: val } : p));
+    setProjects(projects.map((p) => p.id === id ? { ...p, [field]: val } : p));
   }
   function removeProject(id: string) {
-    setField("past_projects", kb.past_projects.filter((p) => p.id !== id));
+    setProjects(projects.filter((p) => p.id !== id));
   }
 
   // Team
   function addMember() {
     const m: TeamMember = { id: uid(), name: "", role: "", qualification: "", experience: "" };
-    setField("technical_team", [...kb.technical_team, m]);
+    setTeam([...team, m]);
   }
   function updateMember(id: string, field: keyof TeamMember, val: string) {
-    setField("technical_team", kb.technical_team.map((m) => m.id === id ? { ...m, [field]: val } : m));
+    setTeam(team.map((m) => m.id === id ? { ...m, [field]: val } : m));
   }
   function removeMember(id: string) {
-    setField("technical_team", kb.technical_team.filter((m) => m.id !== id));
+    setTeam(team.filter((m) => m.id !== id));
   }
 
-  // Equipment
+  // Equipment (still blob-backed — not promoted to a table in this pass)
   function addEquipment() {
     const e: Equipment = { id: uid(), name: "", quantity: 1, owned: true };
     setField("equipment", [...kb.equipment, e]);
@@ -98,23 +188,23 @@ export function KnowledgeBasePanel({ token }: Props) {
   // Certifications
   function addCert() {
     const c: Certification = { id: uid(), name: "", number: "", expiry: "" };
-    setField("certifications", [...kb.certifications, c]);
+    setCerts([...certs, c]);
   }
   function updateCert(id: string, field: keyof Certification, val: string) {
-    setField("certifications", kb.certifications.map((c) => c.id === id ? { ...c, [field]: val } : c));
+    setCerts(certs.map((c) => c.id === id ? { ...c, [field]: val } : c));
   }
   function removeCert(id: string) {
-    setField("certifications", kb.certifications.filter((c) => c.id !== id));
+    setCerts(certs.filter((c) => c.id !== id));
   }
 
   if (loading) return <div className="surface kb-panel"><p className="muted">{t("knowledgeBase", "loading")}</p></div>;
 
   const tabs: { key: typeof activeTab; labelKey: KbKey; count?: number }[] = [
     { key: "basics",    labelKey: "tabBasics" },
-    { key: "projects",  labelKey: "tabProjects", count: kb.past_projects.length },
-    { key: "team",      labelKey: "tabTeam", count: kb.technical_team.length },
+    { key: "projects",  labelKey: "tabProjects", count: projects.length },
+    { key: "team",      labelKey: "tabTeam", count: team.length },
     { key: "equipment", labelKey: "tabEquipment", count: kb.equipment.length },
-    { key: "certs",     labelKey: "tabCerts", count: kb.certifications.length },
+    { key: "certs",     labelKey: "tabCerts", count: certs.length },
   ];
 
   return (
@@ -194,10 +284,10 @@ export function KnowledgeBasePanel({ token }: Props) {
         {/* ── PAST PROJECTS ── */}
         {activeTab === "projects" && (
           <div className="kb-section">
-            {kb.past_projects.length === 0 && (
+            {projects.length === 0 && (
               <p className="muted kb-empty">{t("knowledgeBase", "noProjectsYet")}</p>
             )}
-            {kb.past_projects.map((p) => (
+            {projects.map((p) => (
               <div key={p.id} className="kb-card">
                 <div className="kb-card-header">
                   <strong>{p.name || t("knowledgeBase", "newProjectFallback")}</strong>
@@ -240,10 +330,10 @@ export function KnowledgeBasePanel({ token }: Props) {
         {/* ── TEAM ── */}
         {activeTab === "team" && (
           <div className="kb-section">
-            {kb.technical_team.length === 0 && (
+            {team.length === 0 && (
               <p className="muted kb-empty">{t("knowledgeBase", "noTeamYet")}</p>
             )}
-            {kb.technical_team.map((m) => (
+            {team.map((m) => (
               <div key={m.id} className="kb-card">
                 <div className="kb-card-header">
                   <strong>{m.name || t("knowledgeBase", "newMemberFallback")}</strong>
@@ -312,10 +402,10 @@ export function KnowledgeBasePanel({ token }: Props) {
         {/* ── CERTIFICATIONS ── */}
         {activeTab === "certs" && (
           <div className="kb-section">
-            {kb.certifications.length === 0 && (
+            {certs.length === 0 && (
               <p className="muted kb-empty">{t("knowledgeBase", "noCertsYet")}</p>
             )}
-            {kb.certifications.map((c) => (
+            {certs.map((c) => (
               <div key={c.id} className="kb-card kb-card-slim">
                 <div className="kb-card-header">
                   <strong>{c.name || t("knowledgeBase", "newCertFallback")}</strong>

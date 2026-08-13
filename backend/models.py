@@ -234,3 +234,56 @@ class DiscoveredTender(Base):
     url             = Column(String(500), default="")
     country         = Column(String(100), default="Bangladesh")
     discovered_at   = Column(DateTime, default=utcnow)
+
+
+# ---------------------------------------------------------------------------
+# Structured company knowledge base (Personnel / Certifications / Project
+# Experience). Org-scoped, not user-scoped, so the whole team shares one
+# company memory once Teams is re-enabled. Replaces the equivalent arrays
+# that used to live only inside User.knowledge_base's JSON blob; the blob is
+# still used for equipment/annual-turnover/registration basics, which don't
+# need to be queryable on their own yet.
+# ---------------------------------------------------------------------------
+
+
+class Personnel(Base):
+    __tablename__ = "personnel"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    name = Column(String(255), nullable=False, default="")
+    role = Column(String(255), default="")
+    qualification = Column(String(255), default="")
+    experience = Column(String(100), default="")
+    created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, nullable=True)
+
+
+class Certification(Base):
+    __tablename__ = "certifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    name = Column(String(255), nullable=False, default="")
+    number = Column(String(255), default="")
+    expiry = Column(String(50), default="")
+    created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, nullable=True)
+
+
+class ProjectExperience(Base):
+    __tablename__ = "project_experience"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
+    name = Column(String(255), nullable=False, default="")
+    client = Column(String(255), default="")
+    value = Column(String(100), default="")
+    year = Column(String(20), default="")
+    duration = Column(String(100), default="")
+    category = Column(String(255), default="")
+    created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, nullable=True)
