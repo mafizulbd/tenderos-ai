@@ -104,6 +104,7 @@ class Tender(Base):
     final_checklist = Column(Text)
     personalized_proposal = Column(Text)   # AI-generated full proposal using company KB
     bid_strategy = Column(Text)             # AI bid strategy + compliance + risk heatmap
+    kb_gap_questions = Column(Text)         # JSON list of {category, question} — KB gaps vs. this tender
 
     created_at = Column(DateTime, default=utcnow)
 

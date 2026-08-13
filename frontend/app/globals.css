@@ -2608,3 +2608,82 @@ a:hover {
 .assistant-input-row button {
   white-space: nowrap;
 }
+
+/* Tender workflow stepper */
+
+.tender-stepper {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  overflow-x: auto;
+  padding: 2px 2px 16px;
+}
+
+.stepper-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  min-height: auto;
+  padding: 2px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.stepper-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  color: var(--muted);
+  flex-shrink: 0;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.stepper-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+  transition: color 0.15s ease;
+}
+
+.stepper-item:hover .stepper-label {
+  color: var(--text);
+}
+
+.stepper-connector {
+  width: 18px;
+  height: 2px;
+  background: var(--line);
+  margin: 0 6px;
+  flex-shrink: 0;
+}
+
+.stepper-done .stepper-icon {
+  background: var(--green);
+  border-color: var(--green);
+  color: #fff;
+}
+
+.stepper-done .stepper-label {
+  color: var(--text);
+}
+
+.stepper-done .stepper-connector {
+  background: var(--green);
+}
+
+.stepper-current .stepper-icon {
+  border-color: var(--blue);
+  color: var(--blue);
+  box-shadow: 0 0 0 3px var(--blue-soft);
+}
+
+.stepper-current .stepper-label {
+  color: var(--blue);
+}

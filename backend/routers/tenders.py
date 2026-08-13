@@ -2,6 +2,7 @@
 delete, DOCX/PDF export, AI proposal wizard, AI bid strategy."""
 
 import asyncio
+import json
 import threading
 from io import BytesIO
 
@@ -18,8 +19,9 @@ from deps import (
     get_current_user, get_db, get_tender_response, increment_usage, limiter,
 )
 from hermes_client import (
-    analyze_with_gemini, parse_gemini_response, stream_assistant_reply,
-    stream_bid_strategy, stream_personalized_proposal, stream_with_gemini,
+    analyze_with_gemini, generate_kb_gap_questions, parse_gemini_response,
+    stream_assistant_reply, stream_bid_strategy, stream_personalized_proposal,
+    stream_with_gemini,
 )
 from models import OrgMembership, Tender, User
 from schemas import AssistantChatRequest, ProposalWizardRequest, ReanalyzeRequest, TenderUpdate
@@ -711,6 +713,49 @@ async def generate_bid_strategy(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+# ---------------------------------------------------------------------------
+# Knowledge Base Gap Questions — tender-triggered elicitation
+# ---------------------------------------------------------------------------
+
+@router.post("/tenders/{tender_id}/kb-gaps")
+@limiter.limit("10/minute")
+def generate_kb_gaps(
+    request: Request,
+    tender_id: int,
+    language: str = Form("english"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    membership: OrgMembership = Depends(get_current_membership),
+):
+    """Compares this tender's requirements against the org's Knowledge Base and
+    returns targeted questions for whatever's missing or unclear — short enough
+    to answer in one request rather than streamed. Result is cached on the
+    tender until re-run (e.g. after the user updates their Knowledge Base)."""
+    tender = db.query(Tender).filter(
+        Tender.id == tender_id, Tender.organization_id == membership.organization_id
+    ).first()
+    if not tender:
+        raise HTTPException(status_code=404, detail="Tender not found.")
+    if not _can_modify_tender(tender, membership):
+        raise HTTPException(status_code=403, detail="You can only check knowledge base gaps for tenders you created.")
+
+    tender_analysis = {
+        "eligibility": tender.eligibility,
+        "required_documents": tender.required_documents,
+        "compliance_matrix": tender.compliance_matrix,
+    }
+
+    kb = _get_knowledge_base(current_user)
+    kb = _merge_structured_company_data(kb, membership.organization_id, db)
+
+    questions = generate_kb_gap_questions(tender_analysis, kb, language)
+
+    tender.kb_gap_questions = json.dumps(questions, ensure_ascii=False)
+    db.commit()
+
+    return {"kb_gap_questions": questions}
 
 
 # ---------------------------------------------------------------------------

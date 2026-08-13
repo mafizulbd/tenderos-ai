@@ -17,6 +17,17 @@ _MODEL = "gemini-2.5-flash"
 def _client() -> genai.Client:
     return genai.Client(api_key=os.environ["GEMINI_API_KEY"])
 
+# Critical: client lifetime. Always bind `client = _client()` to a local
+# variable BEFORE calling anything on it — never chain `_client().models...`
+# inline. CPython drops the temporary Client's last reference as soon as the
+# `.models` attribute access completes (before the call it's chained into
+# runs), which closes its underlying httpx transport mid-request and raises
+# "Cannot send a request, as the client has been closed." This bites both
+# streaming (`generate_content_stream`, a lazy iterator) and, contrary to an
+# earlier assumption recorded in project history, ordinary non-streaming
+# `generate_content` calls too — reproduced live against the real Gemini API
+# on the `generate_kb_gap_questions`/`validate_document` inline-call pattern.
+
 # Section order MUST match the prompt headings exactly — parser depends on this.
 _SECTIONS = [
     ("summary",                r"### Executive Summary",              r"### Eligibility Criteria"),
@@ -194,6 +205,105 @@ def analyze_with_gemini(
 
     err = f"Gemini API Error after 3 attempts: {last_error}"
     return {k: (err if k == "summary" else "Not generated") for k in _EMPTY_RESULT}
+
+
+# ---------------------------------------------------------------------------
+# Knowledge Base Gap Questions
+#
+# Tender-triggered elicitation: after analysis, compare THIS tender's
+# requirements against what's already in the org's Knowledge Base and ask
+# only for what's missing or relevant — rather than a generic upfront form.
+# ---------------------------------------------------------------------------
+
+_KB_GAP_CATEGORIES = ("certifications", "personnel", "projects", "basics", "equipment", "other")
+
+
+def _build_kb_gap_prompt(tender_analysis: dict, company_kb: dict, language: str = "english") -> str:
+    lang_instr = _LANG_INSTRUCTION.get(language, _LANG_INSTRUCTION["english"])
+
+    projects_text = "".join(
+        f"\n  - {p.get('name','—')} ({p.get('category','—')}, {p.get('year','—')})"
+        for p in company_kb.get("past_projects", [])
+    ) or " None on file."
+
+    team_text = "".join(
+        f"\n  - {m.get('name','—')} — {m.get('role','—')}"
+        for m in company_kb.get("technical_team", [])
+    ) or " None on file."
+
+    certs_text = "".join(
+        f"\n  - {c.get('name','—')} (expires {c.get('expiry','—')})"
+        for c in company_kb.get("certifications", [])
+    ) or " None on file."
+
+    equipment_text = "".join(
+        f"\n  - {e.get('name','—')} × {e.get('quantity',1)}"
+        for e in company_kb.get("equipment", [])
+    ) or " None on file."
+
+    return f"""You are TenderOS — an AI procurement analyst helping a Bangladeshi bidder
+check whether their Company Knowledge Base has what THIS SPECIFIC tender needs.
+
+{_BD_CONTEXT}
+
+LANGUAGE: {lang_instr}
+
+CRITICAL RULES:
+- Only ask about things this tender's eligibility/documents/compliance sections actually require or reference. Do not ask generic company-profile questions unrelated to this tender.
+- Only flag something as a gap if it is genuinely missing, unclear, or thin in the Knowledge Base below — do not flag something already present just because it could have more detail.
+- Never assume the company has something not listed in the Knowledge Base. Absence of a certification/project/team member in the KB means the user must be asked, not that it's safe to assume they have it.
+- If the Knowledge Base already appears to fully cover this tender's requirements, output zero questions rather than inventing filler ones.
+- Output MUST follow the exact machine-parsed format below. Valid CATEGORY values: {", ".join(_KB_GAP_CATEGORIES)}.
+
+═══ TENDER REQUIREMENTS ═══
+Eligibility Criteria:
+{(tender_analysis.get('eligibility') or '')[:1200]}
+
+Required Documents:
+{(tender_analysis.get('required_documents') or '')[:800]}
+
+Compliance Matrix:
+{(tender_analysis.get('compliance_matrix') or '')[:800]}
+
+═══ CURRENT COMPANY KNOWLEDGE BASE ═══
+Registration basics (TIN/BIN/trade license): {"On file." if company_kb.get('tin') or company_kb.get('trade_license') else "Not on file."}
+Certifications:{certs_text}
+Past Projects:{projects_text}
+Technical Team:{team_text}
+Equipment:{equipment_text}
+
+═══ REQUIRED OUTPUT (machine-parsed — one question per 3 lines, exact labels) ═══
+For each gap, output exactly:
+CATEGORY: [one of: {", ".join(_KB_GAP_CATEGORIES)}]
+QUESTION: [a specific, answerable question referencing what the tender requires]
+---
+(repeat the CATEGORY/QUESTION/--- block for each gap; output nothing else if there are no gaps)
+"""
+
+
+def generate_kb_gap_questions(tender_analysis: dict, company_kb: dict, language: str = "english") -> list[dict]:
+    """Non-streaming — this is a short, structured output, not a long document."""
+    prompt = _build_kb_gap_prompt(tender_analysis, company_kb, language)
+    client = _client()  # bind first — see the "Critical: client lifetime" note near _client()
+    response = client.models.generate_content(model=_MODEL, contents=prompt)
+    raw = response.text if hasattr(response, "text") else ""
+    return _parse_kb_gap_questions(raw)
+
+
+def _parse_kb_gap_questions(text: str) -> list[dict]:
+    questions = []
+    for block in text.split("---"):
+        category_match = re.search(r"CATEGORY:\s*(\w+)", block, re.IGNORECASE)
+        question_match = re.search(r"QUESTION:\s*(.+?)(?:\n|$)", block, re.IGNORECASE)
+        if not (category_match and question_match):
+            continue
+        category = category_match.group(1).strip().lower()
+        if category not in _KB_GAP_CATEGORIES:
+            category = "other"
+        question = question_match.group(1).strip()
+        if question:
+            questions.append({"category": category, "question": question})
+    return questions
 
 
 # ---------------------------------------------------------------------------
