@@ -1549,9 +1549,9 @@ a:hover {
   gap: 10px;
 }
 
-/* Win probability card */
+/* Bid readiness card */
 
-.win-prob-card {
+.bid-readiness-card {
   display: flex;
   align-items: center;
   gap: 16px;
@@ -1561,24 +1561,24 @@ a:hover {
   background: var(--surface-soft);
 }
 
-.win-prob-ring {
+.bid-readiness-ring {
   display: flex;
   align-items: baseline;
   gap: 1px;
   width: 72px;
   height: 72px;
   border-radius: 50%;
-  border: 5px solid var(--prob-color, var(--blue));
+  border: 5px solid var(--readiness-color, var(--blue));
   justify-content: center;
   flex-shrink: 0;
 }
 
-.win-prob-number {
+.bid-readiness-number {
   font-size: 24px;
   font-weight: 700;
 }
 
-.win-prob-pct {
+.bid-readiness-pct {
   font-size: 13px;
   color: var(--muted);
   padding-bottom: 4px;
