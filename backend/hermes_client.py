@@ -812,7 +812,8 @@ def validate_document(file_bytes: bytes, mime_type: str, filename: str) -> dict:
             text = file_bytes.decode("utf-8", errors="ignore")[:6000]
         content = [f"{_DOC_VALIDATOR_PROMPT}\n\nDOCUMENT TEXT:\n{text}"]
 
-    response = _client().models.generate_content(model=_MODEL, contents=content)
+    client = _client()  # bind first — see the "Critical: client lifetime" note near _client()
+    response = client.models.generate_content(model=_MODEL, contents=content)
     raw = response.text if hasattr(response, "text") else ""
 
     def get(pattern: str) -> str:
