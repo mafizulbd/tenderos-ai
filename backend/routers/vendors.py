@@ -1,7 +1,5 @@
 """Vendor management routes, plus tender <-> vendor linking."""
 
-from datetime import datetime
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -11,6 +9,7 @@ from deps import (
 )
 from models import OrgMembership, TenderVendorLink, Vendor
 from schemas import VendorCreate, VendorLinkCreate, VendorUpdate
+from timeutils import utcnow
 
 router = APIRouter()
 
@@ -125,7 +124,7 @@ def update_vendor(
     if payload.notes is not None:
         vendor.notes = payload.notes
 
-    vendor.updated_at = datetime.utcnow()
+    vendor.updated_at = utcnow()
     db.commit()
     return _vendor_response(vendor)
 

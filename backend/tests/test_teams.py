@@ -1,11 +1,12 @@
 import hashlib
 import secrets
-from datetime import datetime, timedelta
+from datetime import timedelta
 from unittest.mock import patch
 
 from database import SessionLocal
 from main import ensure_schema
 from models import Organization, OrgMembership, Tender, User
+from timeutils import utcnow
 
 from tests.test_tenders import MOCK_RESULT, _txt_file
 
@@ -26,7 +27,7 @@ def test_backfill_regression_pre_phase2_user_keeps_working(client):
             email="legacy@example.com",
             password_hash=_hash("password123"),
             api_token="legacy-token",
-            token_expires_at=datetime.utcnow() + timedelta(days=30),
+            token_expires_at=utcnow() + timedelta(days=30),
             organization_name="Legacy Co",
             plan="free",
             monthly_tenders_used=1,

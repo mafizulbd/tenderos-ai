@@ -6,7 +6,6 @@ Fully-qualified import used below to keep the two apart.
 """
 
 import threading
-from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import or_
@@ -16,6 +15,7 @@ import discovery as discovery_scrapers
 from database import SessionLocal
 from deps import get_current_membership, get_current_user, get_db, get_tender_response, limiter
 from models import DiscoveredTender, OrgMembership, Tender, User
+from timeutils import utcnow
 
 router = APIRouter()
 
@@ -105,7 +105,7 @@ def run_discovery_sync() -> None:
         try:
             added = _sync_discovered(fresh_db, notices)
             _discovery_state["count"] = added
-            _discovery_state["last_run"] = datetime.utcnow().isoformat()
+            _discovery_state["last_run"] = utcnow().isoformat()
         finally:
             fresh_db.close()
     except Exception as exc:

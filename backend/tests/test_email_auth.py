@@ -1,7 +1,8 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from database import SessionLocal
 from models import User
+from timeutils import utcnow
 
 
 def _get_user(email: str) -> User:
@@ -20,7 +21,7 @@ def test_signup_creates_unverified_user_with_token(client):
     user = _get_user("new@test.com")
     assert user.email_verified is False
     assert user.email_verification_token
-    assert user.email_verification_expires_at > datetime.utcnow()
+    assert user.email_verification_expires_at > utcnow()
 
 
 def test_verify_email_success(client):
@@ -48,7 +49,7 @@ def test_verify_email_expired_token(client):
     db = SessionLocal()
     try:
         user = db.query(User).filter(User.email == "expired@test.com").first()
-        user.email_verification_expires_at = datetime.utcnow() - timedelta(hours=1)
+        user.email_verification_expires_at = utcnow() - timedelta(hours=1)
         token = user.email_verification_token
         db.commit()
     finally:
@@ -92,7 +93,7 @@ def test_forgot_password_existing_and_nonexistent_email_return_same_response(cli
 
     user = _get_user("forgot@test.com")
     assert user.password_reset_token
-    assert user.password_reset_expires_at > datetime.utcnow()
+    assert user.password_reset_expires_at > utcnow()
 
 
 def test_reset_password_success(client):
@@ -128,7 +129,7 @@ def test_reset_password_expired_token(client):
     db = SessionLocal()
     try:
         user = db.query(User).filter(User.email == "expiredreset@test.com").first()
-        user.password_reset_expires_at = datetime.utcnow() - timedelta(hours=1)
+        user.password_reset_expires_at = utcnow() - timedelta(hours=1)
         token = user.password_reset_token
         db.commit()
     finally:

@@ -1,13 +1,12 @@
 """Contract tracking routes."""
 
-from datetime import datetime
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from deps import _get_org_tender, _get_org_vendor, _parse_deadline, get_current_membership, get_db
 from models import Contract, OrgMembership
 from schemas import ContractCreate, ContractUpdate
+from timeutils import utcnow
 
 router = APIRouter()
 
@@ -155,7 +154,7 @@ def update_contract(
     if payload.notes is not None:
         contract.notes = payload.notes
 
-    contract.updated_at = datetime.utcnow()
+    contract.updated_at = utcnow()
     db.commit()
     return _contract_response(contract)
 

@@ -1,13 +1,12 @@
 """Comment and task routes."""
 
-from datetime import datetime
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from deps import _notify, _parse_deadline, get_current_membership, get_db
 from models import Comment, Contract, OrgMembership, Task as TaskModel, Tender, User, Vendor
 from schemas import CommentCreate, CommentUpdate, TaskCreate, TaskUpdate
+from timeutils import utcnow
 
 router = APIRouter()
 
@@ -187,7 +186,7 @@ def update_comment(
     if not body:
         raise HTTPException(status_code=400, detail="Comment body is required.")
     comment.body = body
-    comment.updated_at = datetime.utcnow()
+    comment.updated_at = utcnow()
     db.commit()
     return _comment_response(comment, _users_by_id([comment.author_user_id], db))
 
@@ -342,7 +341,7 @@ def update_task(
     if payload.due_date is not None:
         task.due_date = _parse_deadline(payload.due_date)
 
-    task.updated_at = datetime.utcnow()
+    task.updated_at = utcnow()
     db.commit()
     return _task_response(task, _users_by_id([task.assignee_user_id, task.created_by_user_id], db))
 

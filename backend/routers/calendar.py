@@ -1,12 +1,13 @@
 """Calendar route: unified deadline/contract-end/task-due event feed."""
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from deps import _parse_deadline, get_current_membership, get_db
 from models import Contract, OrgMembership, Task as TaskModel, Tender
+from timeutils import utcnow
 
 router = APIRouter()
 
@@ -18,7 +19,7 @@ def get_calendar(
     db: Session = Depends(get_db),
     membership: OrgMembership = Depends(get_current_membership),
 ):
-    now = datetime.utcnow()
+    now = utcnow()
     range_start = _parse_deadline(from_) or (now - timedelta(days=30))
     range_end = _parse_deadline(to) or (now + timedelta(days=180))
 

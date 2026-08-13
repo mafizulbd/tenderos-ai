@@ -1,7 +1,5 @@
 """Approval workflow routes: request/cancel/decide approval, history, pending list."""
 
-from datetime import datetime
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -11,6 +9,7 @@ from deps import (
 )
 from models import ApprovalRequest, OrgMembership, Tender
 from schemas import ApprovalDecision
+from timeutils import utcnow
 
 router = APIRouter()
 
@@ -84,7 +83,7 @@ def cancel_approval(
         raise HTTPException(status_code=400, detail="This tender has no pending approval request.")
 
     pending.status = "cancelled"
-    pending.reviewed_at = datetime.utcnow()
+    pending.reviewed_at = utcnow()
     tender.approval_status = "none"
     db.commit()
     return {"detail": "Approval request cancelled."}
@@ -113,7 +112,7 @@ def decide_approval(
     pending.status = payload.decision
     pending.reviewer_user_id = membership.user_id
     pending.reviewer_note = payload.note.strip()
-    pending.reviewed_at = datetime.utcnow()
+    pending.reviewed_at = utcnow()
     tender.approval_status = payload.decision
     if pending.requested_by_user_id != membership.user_id:
         _notify(
