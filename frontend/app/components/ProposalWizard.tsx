@@ -50,17 +50,17 @@ const STEPS: Step[] = [
 const PROPOSAL_SECTION_KEYS: WizardKey[] = [
   "sectionCoverLetter", "sectionCompanyIntro", "sectionUnderstanding", "sectionTechnicalApproach",
   "sectionImplementationPlan", "sectionProjectTeam", "sectionEquipmentPlan", "sectionPastProjects",
-  "sectionFinancialProposal", "sectionQA", "sectionCompliance", "sectionWinProb",
+  "sectionFinancialProposal", "sectionQA", "sectionCompliance", "sectionBidStrength",
 ];
 
-function extractWinProbability(text: string): number | null {
-  const m = text.match(/WIN PROBABILITY:\s*(\d+)/i);
+function extractBidReadiness(text: string): number | null {
+  const m = text.match(/OVERALL BID READINESS:\s*(\d+)/i);
   return m ? parseInt(m[1]) : null;
 }
 
-function winProbColor(prob: number): string {
-  if (prob >= 70) return "#16a34a";
-  if (prob >= 50) return "#d97706";
+function bidReadinessColor(score: number): string {
+  if (score >= 70) return "#16a34a";
+  if (score >= 50) return "#d97706";
   return "#dc2626";
 }
 
@@ -143,7 +143,7 @@ export function ProposalWizard({ tender, token, onComplete, onClose }: Props) {
     }
   }
 
-  const winProb = done ? extractWinProbability(streamedText) : null;
+  const bidReadiness = done ? extractBidReadiness(streamedText) : null;
   const isLastStep = step === STEPS.length - 1;
 
   return (
@@ -292,24 +292,24 @@ export function ProposalWizard({ tender, token, onComplete, onClose }: Props) {
 
               {done && (
                 <div className="wizard-done">
-                  {winProb !== null && (
-                    <div className="win-prob-card">
+                  {bidReadiness !== null && (
+                    <div className="bid-readiness-card">
                       <div
-                        className="win-prob-ring"
-                        style={{ "--prob-color": winProbColor(winProb) } as React.CSSProperties}
+                        className="bid-readiness-ring"
+                        style={{ "--readiness-color": bidReadinessColor(bidReadiness) } as React.CSSProperties}
                       >
-                        <span className="win-prob-number">{winProb}</span>
-                        <span className="win-prob-pct">%</span>
+                        <span className="bid-readiness-number">{bidReadiness}</span>
+                        <span className="bid-readiness-pct">%</span>
                       </div>
                       <div>
-                        <strong style={{ color: winProbColor(winProb), fontSize: 18 }}>
-                          {winProb >= 70
-                            ? t("proposalWizard", "highWinProb")
-                            : winProb >= 50
-                              ? t("proposalWizard", "moderateWinProb")
-                              : t("proposalWizard", "lowWinProb")}
+                        <strong style={{ color: bidReadinessColor(bidReadiness), fontSize: 18 }}>
+                          {bidReadiness >= 70
+                            ? t("proposalWizard", "highBidReadiness")
+                            : bidReadiness >= 50
+                              ? t("proposalWizard", "moderateBidReadiness")
+                              : t("proposalWizard", "lowBidReadiness")}
                         </strong>
-                        <p className="muted" style={{ margin: 0 }}>{t("proposalWizard", "winProbCaption")}</p>
+                        <p className="muted" style={{ margin: 0 }}>{t("proposalWizard", "bidReadinessCaption")}</p>
                       </div>
                     </div>
                   )}

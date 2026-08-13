@@ -331,17 +331,23 @@ Formal declaration of compliance with all eligibility criteria, financial requir
 Standard closing statements, authorized signatory placeholder, date, company seal reference.
 
 ─────────────────────────────────────────────────────
-## WIN PROBABILITY ASSESSMENT (after proposal)
+## BID STRENGTH ASSESSMENT (after proposal)
 ─────────────────────────────────────────────────────
-After the proposal sections, provide a separate assessment:
-
-WIN PROBABILITY: [0-100]
-CONFIDENCE LEVEL: [HIGH / MEDIUM / LOW]
+After the proposal sections, provide a separate assessment. This is an
+EXPLAINABLE READINESS SCORE based on the concrete factors below — it is
+NOT a prediction of win probability. Do not claim or imply a probability
+of winning; actual outcomes also depend on competitor bids, the
+evaluation committee's judgment, and final pricing decisions outside
+this analysis. Score honestly from the tender requirements and company
+KB above — never invent experience, certifications, or documents the KB
+doesn't contain; if something needed isn't in the KB, say so as a gap
+rather than assuming it exists.
 
 TECHNICAL SCORE: [0-100] — [brief reason]
 COMMERCIAL SCORE: [0-100] — [brief reason]
 EXPERIENCE SCORE: [0-100] — [brief reason]
 COMPLIANCE SCORE: [0-100] — [brief reason]
+OVERALL BID READINESS: [0-100 — a composite of the four scores above, weighted by what matters most for this specific tender]
 
 BID STRATEGY: [SUBMIT / CONDITIONAL / WITHDRAW]
 
