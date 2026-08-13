@@ -10,7 +10,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from database import SessionLocal
-from deps import _get_knowledge_base, get_current_membership, get_current_user, get_db
+from deps import (
+    _get_knowledge_base, _merge_structured_company_data, get_current_membership,
+    get_current_user, get_db,
+)
 from models import Contract, Notification, OrgMembership, Tender, User
 from timeutils import utcnow
 
@@ -104,6 +107,7 @@ def _computed_reminders(db: Session, current_user: User, membership: OrgMembersh
 
     try:
         kb = _get_knowledge_base(current_user)
+        kb = _merge_structured_company_data(kb, membership.organization_id, db)
         for cert in kb.get("certifications", []):
             exp_str = cert.get("expiry_date") or cert.get("expiry") or ""
             if not exp_str:

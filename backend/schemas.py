@@ -141,6 +141,50 @@ class KnowledgeBaseUpdate(BaseModel):
     knowledge_base: dict = {}
 
 
+class PersonnelCreate(BaseModel):
+    name: str
+    role: str = ""
+    qualification: str = ""
+    experience: str = ""
+
+
+class PersonnelUpdate(BaseModel):
+    name: str | None = None
+    role: str | None = None
+    qualification: str | None = None
+    experience: str | None = None
+
+
+class CertificationCreate(BaseModel):
+    name: str
+    number: str = ""
+    expiry: str = ""
+
+
+class CertificationUpdate(BaseModel):
+    name: str | None = None
+    number: str | None = None
+    expiry: str | None = None
+
+
+class ProjectExperienceCreate(BaseModel):
+    name: str
+    client: str = ""
+    value: str = ""
+    year: str = ""
+    duration: str = ""
+    category: str = ""
+
+
+class ProjectExperienceUpdate(BaseModel):
+    name: str | None = None
+    client: str | None = None
+    value: str | None = None
+    year: str | None = None
+    duration: str | None = None
+    category: str | None = None
+
+
 class AssistantChatTurn(BaseModel):
     role: str  # "user" | "assistant"
     content: str

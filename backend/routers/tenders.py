@@ -13,9 +13,9 @@ from sqlalchemy.orm import Session
 from database import SessionLocal
 from deps import (
     MAX_UPLOAD_BYTES, _can_modify_tender, _company_profile, _extract_bid_score,
-    _get_knowledge_base, _get_org, _parse_deadline, _sse, check_usage_limit,
-    extract_text_from_file, get_current_membership, get_current_user, get_db,
-    get_tender_response, increment_usage, limiter,
+    _get_knowledge_base, _get_org, _merge_structured_company_data, _parse_deadline,
+    _sse, check_usage_limit, extract_text_from_file, get_current_membership,
+    get_current_user, get_db, get_tender_response, increment_usage, limiter,
 )
 from hermes_client import (
     analyze_with_gemini, parse_gemini_response, stream_assistant_reply,
@@ -543,6 +543,7 @@ async def generate_proposal(
 
     # Merge knowledge base with basic profile
     kb = _get_knowledge_base(current_user)
+    kb = _merge_structured_company_data(kb, membership.organization_id, db)
     if not kb.get("company_name"):
         kb["company_name"] = org.name or ""
     if not kb.get("contact_name"):
@@ -649,6 +650,7 @@ async def generate_bid_strategy(
     }
 
     kb = _get_knowledge_base(current_user)
+    kb = _merge_structured_company_data(kb, membership.organization_id, db)
     kb.setdefault("company_name", org.name or "")
     kb.setdefault("contact_name", current_user.contact_name or "")
     kb.setdefault("phone", current_user.phone or "")
@@ -753,6 +755,7 @@ async def ask_assistant(
     }
 
     kb = _get_knowledge_base(current_user)
+    kb = _merge_structured_company_data(kb, membership.organization_id, db)
     kb.setdefault("company_name", org.name or "")
 
     history = [turn.model_dump() for turn in payload.history]
