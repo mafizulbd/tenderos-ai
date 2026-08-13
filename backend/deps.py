@@ -396,6 +396,7 @@ def get_tender_response(tender: Tender) -> dict:
         "final_checklist": tender.final_checklist,
         "personalized_proposal": tender.personalized_proposal,
         "bid_strategy": tender.bid_strategy,
+        "kb_gap_questions": json.loads(tender.kb_gap_questions) if tender.kb_gap_questions else None,
         "created_at": tender.created_at,
     }
 

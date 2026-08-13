@@ -50,6 +50,7 @@ export default function TendersPage() {
         <section className="detail-stack">
           {selectedTender ? (
             <TenderDetail
+              key={selectedTender.id}
               tender={selectedTender}
               token={token}
               organization={organization}

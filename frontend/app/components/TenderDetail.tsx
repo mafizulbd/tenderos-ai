@@ -8,12 +8,14 @@ import { formatBytes, formatDate } from "../utils";
 import { Section } from "./Section";
 import { ProposalWizard } from "./ProposalWizard";
 import { BidStrategyPanel } from "./BidStrategyPanel";
+import { KbGapPanel } from "./KbGapPanel";
+import { TenderStepper } from "./TenderStepper";
 import { AssistantPanel } from "./AssistantPanel";
 import { ApprovalPanel } from "./ApprovalPanel";
 import { CommentsPanel } from "./CommentsPanel";
 import { TasksPanel } from "./TasksPanel";
 import { LinkedVendorsPanel } from "./LinkedVendorsPanel";
-import type { Organization, TenderDetail as TDetail } from "../types";
+import type { KbGapQuestion, Organization, TenderDetail as TDetail } from "../types";
 import { SECONDARY_MODULES_ENABLED } from "../features";
 import { useLanguage, type TFunction } from "../i18n/LanguageContext";
 import { translations } from "../i18n/translations";
@@ -68,6 +70,7 @@ export function TenderDetail({ tender, token, organization, currentUserId, onUpd
   const [notes, setNotes] = useState(tender.notes ?? "");
   const [localProposal, setLocalProposal] = useState(tender.personalized_proposal);
   const [localStrategy, setLocalStrategy] = useState(tender.bid_strategy);
+  const [localGapQuestions, setLocalGapQuestions] = useState(tender.kb_gap_questions);
   const [error, setError] = useState("");
   const [creatingContract, setCreatingContract] = useState(false);
   const [contractMessage, setContractMessage] = useState("");
@@ -157,9 +160,19 @@ export function TenderDetail({ tender, token, organization, currentUserId, onUpd
     }
   }
 
+  const stepperTender: TDetail = {
+    ...tender,
+    bid_status: bidStatus,
+    personalized_proposal: localProposal,
+    bid_strategy: localStrategy,
+    kb_gap_questions: localGapQuestions,
+  };
+
   return (
     <>
-      <section className="surface detail-header">
+      <TenderStepper tender={stepperTender} />
+
+      <section id="tender-header" className="surface detail-header">
         <div>
           <p className="eyebrow">{t("detail", "selectedTender")}</p>
           <h2>{tender.title}</h2>
@@ -261,7 +274,7 @@ export function TenderDetail({ tender, token, organization, currentUserId, onUpd
       )}
 
       {/* Status & notes panel */}
-      <section className="surface status-notes-panel">
+      <section id="tender-review" className="surface status-notes-panel">
         <div className="status-notes-header">
           <h3>{t("detail", "bidTracking")}</h3>
           <button onClick={saveStatus} disabled={busy} className="save-btn">
@@ -340,23 +353,36 @@ export function TenderDetail({ tender, token, organization, currentUserId, onUpd
         </>
       )}
 
-      <BidStrategyPanel
-        tender={{ ...tender, bid_strategy: localStrategy }}
-        token={token}
-        onSaved={(s) => setLocalStrategy(s)}
-      />
+      <div id="tender-match">
+        <KbGapPanel
+          tender={{ ...tender, kb_gap_questions: localGapQuestions }}
+          token={token}
+          onSaved={(q: KbGapQuestion[]) => setLocalGapQuestions(q)}
+        />
+      </div>
 
-      <Section title={t("sections", "summary")}            content={tender.summary} />
-      <Section title={t("sections", "eligibility")}        content={tender.eligibility} />
-      <Section title={t("sections", "financial")}          content={tender.financial_requirements} />
-      <Section title={t("sections", "requiredDocuments")}  content={tender.required_documents} />
-      <Section title={t("sections", "complianceMatrix")}   content={tender.compliance_matrix} />
-      <Section title={t("sections", "riskAnalysis")}       content={tender.risk_analysis} />
-      <Section title={t("sections", "bidRecommendation")}  content={tender.bid_recommendation} />
-      <Section title={t("sections", "submissionDraft")}    content={tender.proposal_draft} />
-      <Section title={t("sections", "finalChecklist")}     content={tender.final_checklist} />
+      <div id="tender-decide">
+        <BidStrategyPanel
+          tender={{ ...tender, bid_strategy: localStrategy }}
+          token={token}
+          onSaved={(s) => setLocalStrategy(s)}
+        />
+      </div>
+
+      <div id="tender-understand">
+        <Section title={t("sections", "summary")}            content={tender.summary} />
+        <Section title={t("sections", "eligibility")}        content={tender.eligibility} />
+        <Section title={t("sections", "financial")}          content={tender.financial_requirements} />
+        <Section title={t("sections", "requiredDocuments")}  content={tender.required_documents} />
+        <Section title={t("sections", "complianceMatrix")}   content={tender.compliance_matrix} />
+        <Section title={t("sections", "riskAnalysis")}       content={tender.risk_analysis} />
+        <Section title={t("sections", "bidRecommendation")}  content={tender.bid_recommendation} />
+        <Section title={t("sections", "submissionDraft")}    content={tender.proposal_draft} />
+        <Section title={t("sections", "finalChecklist")}     content={tender.final_checklist} />
+      </div>
 
       {/* AI Personalized Proposal */}
+      <div id="tender-draft">
       {localProposal ? (
         <section className="surface proposal-section">
           <div className="proposal-section-header">
@@ -391,6 +417,7 @@ export function TenderDetail({ tender, token, organization, currentUserId, onUpd
           </button>
         </section>
       )}
+      </div>
 
       <AssistantPanel tenderId={tender.id} token={token} />
     </>

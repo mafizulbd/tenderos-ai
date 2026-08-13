@@ -126,6 +126,7 @@ def ensure_schema():
             "bid_recommendation":     "TEXT",
             "personalized_proposal":  "TEXT",
             "bid_strategy":           "TEXT",
+            "kb_gap_questions":       "TEXT",
         }
         with engine.begin() as conn:
             for col, defn in tender_cols.items():

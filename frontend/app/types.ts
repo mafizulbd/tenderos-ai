@@ -216,6 +216,13 @@ export type TenderSummary = {
   summary: string;
 };
 
+export type KbGapCategory = "certifications" | "personnel" | "projects" | "basics" | "equipment" | "other";
+
+export type KbGapQuestion = {
+  category: KbGapCategory;
+  question: string;
+};
+
 export type TenderDetail = TenderSummary & {
   notes: string;
   eligibility: string | null;
@@ -228,6 +235,7 @@ export type TenderDetail = TenderSummary & {
   final_checklist: string | null;
   personalized_proposal: string | null;
   bid_strategy: string | null;
+  kb_gap_questions: KbGapQuestion[] | null;
 };
 
 export type Urgency = "critical" | "warning" | "info";
