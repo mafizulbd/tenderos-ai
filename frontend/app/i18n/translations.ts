@@ -179,7 +179,7 @@ const en = {
     personalizedProposalSubtitle: "Generated using your company knowledge base. Ready to edit and submit.",
     generateProposalHeading: "Generate AI Proposal",
     generateProposalBody:
-      "Get a complete, submission-ready bid proposal generated from your company knowledge base and this tender's requirements — including win probability assessment.",
+      "Get a complete, submission-ready bid proposal generated from your company knowledge base and this tender's requirements — including an explainable bid readiness score.",
     generateProposalButton: "Generate Proposal",
     noTendersHeading: "No tenders yet",
     noTendersBody: "Upload your first tender to analyze it and start tracking your bid.",
@@ -190,7 +190,7 @@ const en = {
     wizardCtaBodyPrefix: "Select a tender then click the blue",
     wizardCtaBodyBold: "AI Proposal",
     wizardCtaBodySuffix:
-      "button to generate a complete, submission-ready bid proposal — including Win Probability Assessment.",
+      "button to generate a complete, submission-ready bid proposal — including an explainable bid readiness score.",
     scoreStrongFit: "Strong Fit",
     scoreViable: "Viable",
     scoreNeedsWork: "Needs Work",
@@ -723,7 +723,7 @@ const bn: Dict = {
     personalizedProposalSubtitle: "আপনার কোম্পানির নলেজ বেস ব্যবহার করে তৈরি। সম্পাদনা ও জমা দেওয়ার জন্য প্রস্তুত।",
     generateProposalHeading: "এআই প্রস্তাব তৈরি করুন",
     generateProposalBody:
-      "আপনার কোম্পানির নলেজ বেস এবং এই টেন্ডারের প্রয়োজনীয়তা থেকে একটি সম্পূর্ণ, জমাদান-প্রস্তুত বিড প্রস্তাব পান — জয়ের সম্ভাবনা মূল্যায়নসহ।",
+      "আপনার কোম্পানির নলেজ বেস এবং এই টেন্ডারের প্রয়োজনীয়তা থেকে একটি সম্পূর্ণ, জমাদান-প্রস্তুত বিড প্রস্তাব পান — ব্যাখ্যাযোগ্য বিড প্রস্তুতি স্কোরসহ।",
     generateProposalButton: "প্রস্তাব তৈরি করুন",
     noTendersHeading: "এখনও কোনো টেন্ডার নেই",
     noTendersBody: "বিশ্লেষণ শুরু করতে এবং আপনার বিড ট্র্যাক করতে আপনার প্রথম টেন্ডার আপলোড করুন।",
@@ -734,7 +734,7 @@ const bn: Dict = {
     wizardCtaBodyPrefix: "একটি টেন্ডার নির্বাচন করুন তারপর নীল",
     wizardCtaBodyBold: "এআই প্রস্তাব",
     wizardCtaBodySuffix:
-      "বাটনে ক্লিক করে জয়ের সম্ভাবনা মূল্যায়নসহ একটি সম্পূর্ণ, জমাদান-প্রস্তুত বিড প্রস্তাব তৈরি করুন।",
+      "বাটনে ক্লিক করে ব্যাখ্যাযোগ্য বিড প্রস্তুতি স্কোরসহ একটি সম্পূর্ণ, জমাদান-প্রস্তুত বিড প্রস্তাব তৈরি করুন।",
     scoreStrongFit: "শক্তিশালী উপযুক্ততা",
     scoreViable: "সম্ভাব্য",
     scoreNeedsWork: "উন্নতি প্রয়োজন",

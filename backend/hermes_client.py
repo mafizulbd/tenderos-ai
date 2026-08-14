@@ -142,7 +142,7 @@ Then:
 2. Key Strengths
 3. Critical Gaps (must resolve before bidding)
 4. Pre-bid Action Plan (e-GP registration, document checklist, sub-contractors, timeline)
-5. Win Probability and competitive landscape
+5. Competitive Positioning (explainable factors vs. other likely bidders — not a win-probability prediction)
 
 ### Tender Submission Draft
 Professional bid cover letter and technical proposal introduction for Bangladesh submission context. Include IFB/SBD reference if known, standard formalities, compliance commitments per PPA 2006 / donor guidelines. Use placeholders [Company Name], [Date] where unknown. Ready-to-edit format.
